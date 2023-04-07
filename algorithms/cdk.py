@@ -6,6 +6,7 @@ class RBM:
     def __init__(self,
                  v_dim, h_dim,
                  lr=5e-4,
+                 weight_decay = 1e-5,
                  gibbs_num = 1,
                  epochs = 50000,
                  batch_size = 1,
@@ -14,6 +15,7 @@ class RBM:
         self.v_dim = v_dim
         self.h_dim = h_dim
         self.lr = lr
+        self.weight_decay = weight_decay
         self.v_bias = np.random.normal(-0.1, 0.1, size = (1,self.v_dim))
         self.h_bias = np.random.normal(-0.1, 0.1, size =(1,self.h_dim))
         self.W = np.random.normal(size = (self.v_dim, self.h_dim))
@@ -84,21 +86,20 @@ class RBM:
             _, p_hk_v = self.sample_h(v_k)
 
         return v_0, v_k, p_h0_v, p_hk_v
-        	  #(5,9) (5,9) (5,20) (5,20)
 
 
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
-        dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v))
-        dh_bias = (np.sum(p_h0_v - p_hk_v))
-        dv_bias = (np.sum(v_0 - v_k))
+        dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v - p_hk_v)) / self.batch_size
+        dv_bias = (np.sum(v_0 - v_k)) / self.batch_size
 
         self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
         self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
 
-        self.W += self.lr * self.v_w / self.batch_size
-        self.v_bias += self.lr * self.v_v / self.batch_size
-        self.h_bias += self.lr * self.v_h / self.batch_size
+        self.W += self.lr * self.v_w #- self.lr * self.weight_decay * self.W
+        self.v_bias += self.lr * self.v_v
+        self.h_bias += self.lr * self.v_h
 
     def get_all_cases(self, binary_kind, v_dim):
         def all_cases(nums, v_dim):
@@ -196,9 +197,12 @@ class RBM:
         #for epoch in range(self.epochs):
             epoch_start_time = time.time()
             for index in range(data_num):
+                # positive sampling
                 v0 = train_data[start[index]: end[index]]
-                vk = v0.copy()
                 _, p_h0_v = self.sample_h(v0)
+
+                # negative sampling
+                vk = v0.copy()
                 _, vk, _, p_hk_v = self.gibbs_sampling(v0)
                 self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
@@ -230,22 +234,22 @@ class RBM:
 
                 epoch_end_time = time.time()
 
-                if KL[0] < lowest_KL:
-                    lowest_KL = KL[0]
-                    lowest_KL_epoch = epoch
+                # if KL[0] < lowest_KL:
+                #     lowest_KL = KL[0]
+                #     lowest_KL_epoch = epoch
 
                 if(epoch % 100 == 0):
-                    results = 'epoch:{} ==>  KL = {}, logLKH = {}, prob_sum = {:.4f}, time = {:.2f}s' \
+                    results = 'epoch:{} ==>  KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, time = {:.2f}s' \
                     		  .format(epoch, KL, logLKH, x, epoch_end_time-epoch_start_time)
 
                     #f=open("log -1&1.txt","a")
                     #f=open("50000epochs_new.txt","a")
                     #f.write(results + '\n')
                     #f.close()
-                    print(results)
+                    tqdm.write(results)
 
             else:
-                if epoch + 1 == self.epochs:
+                if epoch + 1 == self.epochs:# or (epoch + 1) % 10000 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -262,8 +266,8 @@ class RBM:
                     logLKH /= N
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
-                    results = 'KL = {}, logLKH = {}, prob_distribution = {}'.format(KL, logLKH, x)
-                    print(results)
+                    results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
+                    tqdm.write(results)
         #record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
         #f.write(record + '\n')
         #f.write('\n')
@@ -272,21 +276,16 @@ class RBM:
 
 
 if __name__ == "__main__":
-	train_data1 = np.loadtxt(r'3x3pn.txt')
-	train_data2 = np.loadtxt(r'3x3.txt')
+    train_data = np.loadtxt(r'../3x3.txt')
 
-	visible_node_num = train_data1.shape[1]
-	hidden_node_num = 20
-	lr = 1e-3
-	#gibbs_num = 1
-	rbm1 = RBM(visible_node_num, hidden_node_num, lr, binary_kind="withoutzero",
-	           epochs=50000, batch_size = 2, gibbs_num = 1, compute_detail=False)
+    visible_node_num = train_data.shape[1]
+    hidden_node_num = 20
+    lr = 5 * 1e-3
+    # epoch:100000 lr: 5e-4  -------->  k = 1
 
-	rbm2 = RBM(visible_node_num, hidden_node_num, lr, binary_kind="withzero",
-	           epochs=50000, batch_size = 2, gibbs_num = 1, compute_detail=False)
-	rbm2.v_bias = rbm1.v_bias.copy()
-	rbm2.h_bias = rbm1.h_bias.copy()
-	rbm2.W = rbm1.W.copy()
-
-	#rbm1.train(train_data1)
-	rbm2.train(train_data2)
+    for i in range(10):
+        rbm = RBM(visible_node_num, hidden_node_num, lr,
+            binary_kind="withzero",
+            epochs= 200000 , batch_size = 14, gibbs_num = 1, weight_decay = 1e-5,
+            compute_detail=False)
+        rbm.train(train_data)
