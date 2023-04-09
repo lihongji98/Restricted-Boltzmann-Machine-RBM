@@ -103,7 +103,7 @@ class RBM:
         #print(np.float16(negative_sampling) == np.float16(negative_sampling_new))
         dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_new
         # the negative sampling has been normalized
-        dh_bias = (np.sum(p_h0_v - p_hk_v)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
         dv_bias = (np.sum(v_0 - v_k_copy)) / self.batch_size
 
         self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw

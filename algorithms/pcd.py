@@ -92,8 +92,8 @@ class RBM:
 
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
         dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
-        dh_bias = (np.sum(p_h0_v - p_hk_v)) / self.batch_size
-        dv_bias = (np.sum(v_0 - v_k)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
+        dv_bias = (np.sum(v_0 - v_k, axis = 0)) / self.batch_size
 
         self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
@@ -263,7 +263,7 @@ class RBM:
                     print(results)
 
             else:
-                if epoch + 1 == self.epochs:# or (epoch + 1) % 10000 == 0:
+                if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -294,12 +294,12 @@ if __name__ == "__main__":
     train_data = np.loadtxt(r'../3x3.txt')
     visible_node_num = train_data.shape[1]
     hidden_node_num = 20
-    lr = 2.7 * 1e-3 #0.0003
+    lr = 2.5 * 1e-3 #0.0003
     weight_decay = 2.5 * 1e-5
 
     # epoch250000, lr->1.1 *1e-4, weight_decay->1e-2
 
-    for i in range(10):
+    for i in range(1):
         print("lr = {}, weight_decay = {}".format(lr, weight_decay))
         rbm = RBM(visible_node_num, hidden_node_num, lr,
         binary_kind="withzero",
