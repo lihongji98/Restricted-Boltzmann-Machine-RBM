@@ -1,7 +1,5 @@
 import numpy as np
-import time
 from tqdm import tqdm
-
 
 class RBM:
     def __init__(self,
@@ -33,13 +31,10 @@ class RBM:
         return state_v, p_v_h
 
     def state_sample(self, p):
-        state = []
-        uni = np.random.uniform(0,1, size = p[0].shape[0])
-        for i in range(len(p)):
-            condition = np.less(p[i], uni)
-            state_node = np.where(condition, 0, 1)
-            state.append(state_node)
-        return np.array(state).reshape(p.shape[0], p.shape[1])
+        uni = np.random.uniform(0,1, size = (p.shape[0], p.shape[1]))
+        condition = np.less(p, uni)
+        state_node = np.where(condition, 0, 1)
+        return state_node
 
     def get_all_cases(self, v_dim):
         def all_cases(nums, v_dim):
@@ -57,7 +52,6 @@ class RBM:
                 backtracking(nums, v_dim, path, i + 1, res)
                 path.pop()
         return np.array(all_cases([0, 1], self.v_dim))
-
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
         train_data = np.float32(train_data)
@@ -145,7 +139,6 @@ class RBM:
             np.random.shuffle(train_data)
             #self.lr = self.exp_decay(epoch)
             #self.momentum = 0
-            epoch_start_time = time.time()
             for index in range(data_num):
                 v0 = train_data[start[index]: end[index]]
                 _, p_h0_v = self.sample_h(v0)

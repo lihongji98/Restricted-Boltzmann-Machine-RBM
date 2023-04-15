@@ -57,19 +57,10 @@ class RBM:
         return state_v, p_v_h
 
     def state_sample(self, p):
-        state = []
-        uni = np.random.uniform(0,1, size=p[0].shape[0])
-        for i in range(len(p)):
-            condition = np.less(p[i], uni)
-            if self.binary_kind == "withoutzero":
-                state_node = np.where(condition, -1, 1)
-            elif self.binary_kind == "withzero":
-                state_node = np.where(condition, 0, 1)
-            else:
-                print("enter 'withzero' or 'withoutzero'!")
-            state.append(state_node)
-
-        return np.array(state).reshape(p.shape[0], p.shape[1])
+        uni = np.random.uniform(0,1, size = (p.shape[0], p.shape[1]))
+        condition = np.less(p, uni)
+        state_node = np.where(condition, 0, 1)
+        return state_node
 
     def gibbs_sampling(self, v, k):
         i = 0
@@ -125,60 +116,19 @@ class RBM:
             print("enter 'withzero' or 'withoutzero'!")
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
-        probability = []
-        if self.binary_kind == "withoutzero":
-            for l in range(len(train_data)):
-                train_data_one_piece = train_data[l]
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece)+ h_bias.T[i]) +
-                                                     np.exp(-np.dot(W.T[i], train_data_one_piece)- h_bias.T[i]))
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
-
-        elif self.binary_kind == "withzero":
-            for l in range(len(train_data)):
-                train_data_one_piece = train_data[l]
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece) + h_bias.T[i]) + 1)
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
-
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
-        return probability
+        train_data = np.float32(train_data)
+        first_part = np.dot(train_data, v_bias.T).reshape(train_data.shape[0], 1)
+        second_part = np.sum(np.log(1 + np.exp(np.dot(train_data, W) + h_bias)), axis = 1)
+        second_part = second_part.reshape(train_data.shape[0], 1)
+        pxz = np.exp(first_part + second_part)
+        return pxz.reshape(-1)
+        #(14,)
 
     def compute_Z(self, W, v_bias, h_bias):
-        Z = 0
-        if self.binary_kind == "withoutzero":
-            for l in range(len(self.allcases)):
-                train_data_one = self.allcases[l]
-                exp_av = np.exp(np.dot(v_bias, train_data_one))
-                product = 1
-                for j in range(h_bias.shape[1]):
-                    product = product * (np.exp(np.dot(train_data_one.T, W.T[j]) + h_bias.T[j]) +
-                                         np.exp(-np.dot(train_data_one.T, W.T[j]) - h_bias.T[j]))
-                total = exp_av * product
-
-                Z += total
-
-        elif self.binary_kind == "withzero":
-            for l in range(len(self.allcases)):
-                train_data_one = self.allcases[l]
-                exp_av = np.exp(np.dot(v_bias, train_data_one))
-                product = 1
-                for j in range(h_bias.shape[1]):
-                    product = product * (np.exp(np.dot(train_data_one.T, W.T[j]) + h_bias.T[j]) + 1)
-                total = exp_av * product
-
-                Z += total
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
+        first_part = np.dot(self.allcases, v_bias.T).reshape(len(self.allcases), 1)
+        second_part = np.sum(np.log(1 + np.exp(np.dot(self.allcases, W) + h_bias)), axis = 1)
+        second_part = second_part.reshape(len(self.allcases), 1)
+        Z = np.sum(np.exp(first_part + second_part).reshape(-1))
         return Z
 
     def exp_decay(self, epoch, k = 1 * 1e-10): #9 * 1e-11
@@ -279,7 +229,7 @@ class RBM:
                     logLKH /= N
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
-                    results = "epoch: {}, KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}".format(epoch + 1, KL[0], logLKH[0], x, self.lr)
+                    results = "epoch: {}, KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}".format(epoch + 1, KL, logLKH, x, self.lr)
                     #tqdm.write(results)
                     #f.write(results + '\n')
 

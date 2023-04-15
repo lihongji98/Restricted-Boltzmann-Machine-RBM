@@ -55,19 +55,10 @@ class RBM:
         return state_v, p_v_h
 
     def state_sample(self, p):
-        state = []
-        uni = np.random.uniform(0,1, size=p[0].shape[0])
-        for i in range(len(p)):
-            condition = np.less(p[i], uni)
-            if self.binary_kind == "withoutzero":
-                state_node = np.where(condition, -1, 1)
-            elif self.binary_kind == "withzero":
-                state_node = np.where(condition, 0, 1)
-            else:
-                print("enter 'withzero' or 'withoutzero'!")
-            state.append(state_node)
-
-        return np.array(state).reshape(p.shape[0], p.shape[1])
+        uni = np.random.uniform(0,1, size = (p.shape[0], p.shape[1]))
+        condition = np.less(p, uni)
+        state_node = np.where(condition, 0, 1)
+        return state_node
 
     def gibbs_sampling(self, v):
         i = 0
@@ -145,74 +136,26 @@ class RBM:
             print("enter 'withzero' or 'withoutzero'!")
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
-        probability = []
-        if self.binary_kind == "withoutzero":
-            for l in range(len(train_data)):
-                train_data_one_piece = train_data[l]
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece)+ h_bias.T[i]) +
-                                                     np.exp(-np.dot(W.T[i], train_data_one_piece)- h_bias.T[i]))
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
-
-        elif self.binary_kind == "withzero":
-            for l in range(len(train_data)):
-                train_data_one_piece = train_data[l]
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece) + h_bias.T[i]) + 1)
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
-
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
-        return probability
+        train_data = np.float32(train_data)
+        first_part = np.dot(train_data, v_bias.T).reshape(train_data.shape[0], 1)
+        second_part = np.sum(np.log(1 + np.exp(np.dot(train_data, W) + h_bias)), axis = 1)
+        second_part = second_part.reshape(train_data.shape[0], 1)
+        pxz = np.exp(first_part + second_part)
+        return pxz.reshape(-1)
+        #(14,)
 
     def compute_Z(self, W, v_bias, h_bias):
-        Z = 0
-        if self.binary_kind == "withoutzero":
-            for l in range(len(self.allcases)):
-                train_data_one = self.allcases[l]
-                exp_av = np.exp(np.dot(v_bias, train_data_one))
-                product = 1
-                for j in range(h_bias.shape[1]):
-                    product = product * (np.exp(np.dot(train_data_one.T, W.T[j]) + h_bias.T[j]) +
-                                         np.exp(-np.dot(train_data_one.T, W.T[j]) - h_bias.T[j]))
-                total = exp_av * product
-
-                Z += total
-
-        elif self.binary_kind == "withzero":
-            for l in range(len(self.allcases)):
-                train_data_one = self.allcases[l]
-                exp_av = np.exp(np.dot(v_bias, train_data_one))
-                product = 1
-                for j in range(h_bias.shape[1]):
-                    product = product * (np.exp(np.dot(W.T[j], train_data_one) + h_bias.T[j]) + 1)
-                total = exp_av * product
-                Z += total[0]
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
+        first_part = np.dot(self.allcases, v_bias.T).reshape(len(self.allcases), 1)
+        second_part = np.sum(np.log(1 + np.exp(np.dot(self.allcases, W) + h_bias)), axis = 1)
+        second_part = second_part.reshape(len(self.allcases), 1)
+        Z = np.sum(np.exp(first_part + second_part).reshape(-1))
         return Z
 
     def compute_weight(self, train_data, W, v_bias, h_bias):
-        weights = []
-        for l in range(len(train_data)):
-            train_data_one_piece = train_data[l]
-            product_value = 1
-            exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-            for i in range(h_bias.shape[1]):
-                product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece) + h_bias.T[i]) + 1)
-            px_with_Z = exp_av * product_value
-            weights.append(px_with_Z[0])
+        weights = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
         return weights / np.sum(weights)
 
-    def exp_decay(self, epoch, k = 1 * 1e-10): #9 * 1e-11
+    def exp_decay(self, epoch, k = 5 * 1e-12): #9 * 1e-11
        initial_lrate = self.lr
        lrate = initial_lrate * np.exp(-k * epoch)
        return lrate
@@ -295,7 +238,7 @@ class RBM:
                     tqdm.write(results)
 
             else:
-                if epoch + 1 == self.epochs or (epoch + 1) % 100 == 0 or epoch == 0:
+                if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -313,7 +256,7 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    #tqdm.write(results)
+                    tqdm.write(results)
                     #f.write(results + '\n')
 
                     if KL < lowest_KL:
@@ -331,11 +274,11 @@ if __name__ == "__main__":
 
     visible_node_num = train_data.shape[1]
     hidden_node_num = 20
-    lr = 2.5 * 1e-3
+    lr = 5 * 1e-3
     weight_decay = 2.5 * 1e-5
     # epoch:100000 lr: 5e-4  -------->  k = 1
 
-    for i in range(10):
+    for i in range(1):
         rbm = RBM(visible_node_num, hidden_node_num, lr,
             binary_kind="withzero",
             epochs= 400000 , batch_size = 14, gibbs_num = 1, weight_decay = 2.5 * 1e-5,
