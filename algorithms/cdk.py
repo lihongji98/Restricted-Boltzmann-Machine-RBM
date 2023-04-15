@@ -190,6 +190,16 @@ class RBM:
                 end.append(len(idx))
         data_num = len(start)
 
+        lowest_KL = float("inf")
+        lowest_KL_epoch = 0
+
+        # if self.gibbs_num == 1:
+        #     f = open("records/cd-1.log","w")
+        # elif self.gibbs_num == 10:
+        #     f = open("records/cd-10.log","w")
+        # else:
+        #     pass
+
         for epoch in tqdm(range(self.epochs)):
         #for epoch in range(self.epochs):
             epoch_start_time = time.time()
@@ -202,9 +212,6 @@ class RBM:
                 vk = v0.copy()
                 _, vk, _, p_hk_v = self.gibbs_sampling(v0)
                 self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
-
-            lowest_KL = float("inf")
-            lowest_KL_epoch = 0
 
             if self.compute_detail:
                 KL_list, log_LKH_list = [], []
@@ -246,7 +253,7 @@ class RBM:
                     tqdm.write(results)
 
             else:
-                if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
+                if epoch + 1 == self.epochs or (epoch + 1) % 500 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -264,11 +271,16 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    tqdm.write(results)
-        #record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
+                    #tqdm.write(results)
+                    #f.write(results + '\n')
+
+                    if KL < lowest_KL:
+                        lowest_KL = KL
+                        lowest_KL_epoch = epoch
+        record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch + 1)
         #f.write(record + '\n')
         #f.write('\n')
-        #print(record)
+        print(record)
         #f.close()
 
 
@@ -277,12 +289,12 @@ if __name__ == "__main__":
 
     visible_node_num = train_data.shape[1]
     hidden_node_num = 20
-    lr = 3 * 1e-3
+    lr = 2 * 1e-3
     # epoch:100000 lr: 5e-4  -------->  k = 1
 
-    for i in range(1):
+    for i in range(10):
         rbm = RBM(visible_node_num, hidden_node_num, lr,
             binary_kind="withzero",
-            epochs= 200000 , batch_size = 14, gibbs_num = 1, weight_decay = 1e-5,
+            epochs= 300000 , batch_size = 14, gibbs_num = 10, weight_decay = 1e-5,
             compute_detail=False)
         rbm.train(train_data)

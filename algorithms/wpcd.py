@@ -86,39 +86,38 @@ class RBM:
 
         return v_0, v_k, p_h0_v, p_hk_v
 
-    def gradient_compute(self, v, p_h_v):
-        v = np.float32(v)
-        v_vbias = v.copy()
+    def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
+        v_k_copy = v_k.copy()
+        v_k = np.float16(v_k)
+        p_hk_v_copy = p_hk_v.copy()
+        # negative_sampling = np.dot(v_k.T, p_hk_v)/ self.batch_size
 
-        expectation, px_sum = self.compute_expectation(self.W, self.v_bias, self.h_bias) #(14,)
-        # 1,20       512,1
-        expectation = np.array(expectation).reshape(1, self.h_dim)
-        dw_exp_model = []
-        for i in range(len(v)):
-            dw_exp_model.append(np.dot(np.array(v[i]).reshape(1, self.v_dim).T, expectation))
-        dw_exp_model = np.array(dw_exp_model).reshape(self.batch_size, self.v_dim, self.h_dim)
+        weights = self.compute_weight(v_k, self.W, self.v_bias, self.h_bias)
+        #weights = [1/self.batch_size for _ in range(self.batch_size)]
+        if len(v_k) == len(weights) == len(p_hk_v) == self.batch_size:
+            for i in range(self.batch_size):
+                v_k[i] = v_k[i] * weights[i]
+                p_hk_v_copy[i] = p_hk_v[i] * weights[i]
 
-        dv_bias_exp_model = []
-        for i in range(len(v_vbias)):
-            pxx= np.dot(px_sum, np.array(v_vbias[i]).reshape(1, self.v_dim))
-            pxx = np.sum(pxx, axis = 0)
-            dv_bias_exp_model.append(pxx.reshape(1, self.v_dim))
-        dv_bias_exp_model = np.array(dv_bias_exp_model).reshape(self.batch_size, 1, self.v_dim)
+        else:
+            print("*" * 20)
 
-        dw_exp_model = np.sum(dw_exp_model, axis = 0) / self.batch_size
-        dv_bias_exp_model = np.sum(dv_bias_exp_model, axis = 0) / self.batch_size
-        dh_bias_exp_model = expectation
+        negative_sampling_w = np.dot(v_k.T, p_hk_v)
+        negative_sampling_h_bias = np.sum(p_hk_v_copy, axis = 0)
+        negative_sampling_v_bias = np.sum(v_k, axis = 0)
+        #print(np.float16(negative_sampling) == np.float16(negative_sampling_w))
+        dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_w
 
-        dw = np.dot(v.T, p_h_v)  / self.batch_size - dw_exp_model
-        dv_bias = np.sum(v, axis = 0) / self.batch_size - dv_bias_exp_model
-        dh_bias = np.sum(p_h_v, axis = 0) / self.batch_size - dh_bias_exp_model
-
+        # dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
+        # dv_bias = (np.sum(v_0 - v_k_copy)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v, axis = 0)) / self.batch_size - negative_sampling_h_bias
+        dv_bias = (np.sum(v_0, axis = 0)) / self.batch_size - negative_sampling_v_bias
 
         self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
         self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
 
-        self.W += self.lr * self.v_w #- self.lr * self.weight_decay * self.W
+        self.W += self.lr * self.v_w - self.lr * self.weight_decay * self.W
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
 
@@ -201,50 +200,19 @@ class RBM:
 
         return Z
 
-    def compute_pxz(self, W, v_bias, h_bias):
-        probability = []
-        P_H_V = []
-        if self.binary_kind == "withoutzero":
-            for l in range(len(train_data)):
-                train_data_one_piece = train_data[l]
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece)+ h_bias.T[i]) +
-                                                     np.exp(-np.dot(W.T[i], train_data_one_piece)- h_bias.T[i]))
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
+    def compute_weight(self, train_data, W, v_bias, h_bias):
+        weights = []
+        for l in range(len(train_data)):
+            train_data_one_piece = train_data[l]
+            product_value = 1
+            exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
+            for i in range(h_bias.shape[1]):
+                product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece) + h_bias.T[i]) + 1)
+            px_with_Z = exp_av * product_value
+            weights.append(px_with_Z[0])
+        return weights / np.sum(weights)
 
-        elif self.binary_kind == "withzero":
-            for l in range(len(self.allcases)):
-                train_data_one_piece = self.allcases[l]
-
-                _, p_h_v = self.sample_h(train_data_one_piece)
-                P_H_V.append(p_h_v)
-                product_value = 1
-                exp_av = np.exp(np.dot(v_bias, train_data_one_piece))
-                for i in range(h_bias.shape[1]):
-                    product_value = product_value * (np.exp(np.dot(W.T[i], train_data_one_piece) + h_bias.T[i]) + 1)
-                px_with_Z = exp_av * product_value
-                probability.append(px_with_Z[0])
-
-            probability = np.array(probability).reshape(len(self.allcases), 1) #512,1
-            P_H_V = np.array(P_H_V).reshape(len(self.allcases), self.h_dim)
-            exp_pxz = np.dot(probability.T, P_H_V) #/ len(self.allcases) # 1,20
-
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
-        return exp_pxz, probability
-
-    def compute_expectation(self, W, v_bias, h_bias):
-        Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
-        exp_pxz, px = self.compute_pxz(self.W, self.v_bias, self.h_bias)
-        # 1,20     512,1
-        expectation = exp_pxz / Z # 1,20
-        return expectation, px/Z #512,1
-
-    def exp_decay(self, epoch, k = 5 * 1e-9): #9 * 1e-11
+    def exp_decay(self, epoch, k = 1 * 1e-10): #9 * 1e-11
        initial_lrate = self.lr
        lrate = initial_lrate * np.exp(-k * epoch)
        return lrate
@@ -261,18 +229,31 @@ class RBM:
                 end.append(len(idx))
         data_num = len(start)
 
+        lowest_KL = float("inf")
+        lowest_KL_epoch = 0
+
+        #f = open("records/wpcd.log","w")
+
+        weighted_persistant_chain = None
         for epoch in tqdm(range(self.epochs)):
         #for epoch in range(self.epochs):
             np.random.shuffle(train_data)
-            #self.lr = self.exp_decay(epoch)
+            self.lr = self.exp_decay(epoch)
+
             epoch_start_time = time.time()
             for index in range(data_num):
+                # positive sampling
                 v0 = train_data[start[index]: end[index]]
                 _, p_h0_v = self.sample_h(v0)
-                self.gradient_compute(v0, p_h0_v)
 
-            lowest_KL = float("inf")
-            lowest_KL_epoch = 0
+                # negative sampling
+                if weighted_persistant_chain is None:
+                    #_, persistant_chain, _, _ = self.gibbs_sampling(v0, 1)
+                    weighted_persistant_chain = np.random.binomial(1, 0.5, size=(self.batch_size, self.v_dim))
+                vk = v0.copy()
+                _, vk, _, p_hk_v = self.gibbs_sampling(weighted_persistant_chain)
+                self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                weighted_persistant_chain = vk
 
             if self.compute_detail:
                 KL_list, log_LKH_list = [], []
@@ -332,11 +313,17 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    tqdm.write(results)
-        #record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
+                    #tqdm.write(results)
+                    #f.write(results + '\n')
+
+                    if KL < lowest_KL:
+                        lowest_KL = KL
+                        lowest_KL_epoch = epoch
+
+        record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
         #f.write(record + '\n')
         #f.write('\n')
-        #print(record)
+        print(record)
         #f.close()
 
 if __name__ == "__main__":
@@ -344,12 +331,13 @@ if __name__ == "__main__":
 
     visible_node_num = train_data.shape[1]
     hidden_node_num = 20
-    lr =  1 * 1e-3
+    lr = 2.5 * 1e-3
+    weight_decay = 2.5 * 1e-5
     # epoch:100000 lr: 5e-4  -------->  k = 1
 
-    for i in range(1):
+    for i in range(10):
         rbm = RBM(visible_node_num, hidden_node_num, lr,
             binary_kind="withzero",
-            epochs= 200000 , batch_size = 14, gibbs_num = 1, weight_decay = 1e-5,
+            epochs= 400000 , batch_size = 14, gibbs_num = 1, weight_decay = 2.5 * 1e-5,
             compute_detail=False)
         rbm.train(train_data)

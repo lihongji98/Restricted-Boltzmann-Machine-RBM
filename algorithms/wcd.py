@@ -69,7 +69,6 @@ class RBM:
 
         return np.array(state).reshape(p.shape[0], p.shape[1])
 
-
     def gibbs_sampling(self, v):
         i = 0
         k = self.gibbs_num
@@ -87,24 +86,29 @@ class RBM:
 
         return v_0, v_k, p_h0_v, p_hk_v
 
-
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
         v_k_copy = v_k.copy()
         v_k = np.float16(v_k)
+        p_hk_v_copy = p_hk_v.copy()
         negative_sampling = np.dot(v_k.T, p_hk_v)/ self.batch_size
 
         weights = self.compute_weight(v_k, self.W, self.v_bias, self.h_bias)
-        #weights = [1/self.batch_size for _ in range(self.batch_size)]
-        if len(v_k) == len(weights) == self.batch_size:
+
+        if len(v_k) == len(weights) == len(p_hk_v) == self.batch_size:
             for i in range(self.batch_size):
                 v_k[i] = v_k[i] * weights[i]
+                p_hk_v_copy[i] = p_hk_v[i] * weights[i]
 
-        negative_sampling_new = np.dot(v_k.T, p_hk_v)
-        #print(np.float16(negative_sampling) == np.float16(negative_sampling_new))
-        dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_new
-        # the negative sampling has been normalized
-        dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
-        dv_bias = (np.sum(v_0 - v_k_copy)) / self.batch_size
+        else:
+            print("*" * 20)
+
+        negative_sampling_w = np.dot(v_k.T, p_hk_v)
+        negative_sampling_h_bias = np.sum(p_hk_v_copy, axis = 0)
+        negative_sampling_v_bias = np.sum(v_k, axis = 0)
+
+        dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_w
+        dh_bias = (np.sum(p_h0_v, axis = 0)) / self.batch_size - negative_sampling_h_bias
+        dv_bias = (np.sum(v_0, axis = 0)) / self.batch_size - negative_sampling_v_bias
 
         self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
@@ -205,6 +209,11 @@ class RBM:
             weights.append(px_with_Z[0])
         return weights / np.sum(weights)
 
+    def exp_decay(self, epoch, k = 1 * 1e-10): #9 * 1e-11
+       initial_lrate = self.lr
+       lrate = initial_lrate * np.exp(-k * epoch)
+       return lrate
+
     def train(self, train_data):
         idx = [i for i in range(train_data.shape[0])]
         start = [i for i in idx if i % self.batch_size == 0]
@@ -217,9 +226,15 @@ class RBM:
                 end.append(len(idx))
         data_num = len(start)
 
+        lowest_KL = float("inf")
+        lowest_KL_epoch = 0
+
+        #f = open("records/wcd.log","w")
+
         for epoch in tqdm(range(self.epochs)):
         #for epoch in range(self.epochs):
             np.random.shuffle(train_data)
+            #self.lr = self.exp_decay(epoch)
             epoch_start_time = time.time()
             for index in range(data_num):
                 # positive sampling
@@ -230,9 +245,6 @@ class RBM:
                 vk = v0.copy()
                 _, vk, _, p_hk_v = self.gibbs_sampling(v0)
                 self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
-
-            lowest_KL = float("inf")
-            lowest_KL_epoch = 0
 
             if self.compute_detail:
                 KL_list, log_LKH_list = [], []
@@ -274,7 +286,7 @@ class RBM:
                     tqdm.write(results)
 
             else:
-                if epoch + 1 == self.epochs or (epoch + 1) % 5000 == 0 or epoch == 0:
+                if epoch + 1 == self.epochs or (epoch + 1) % 100 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -292,11 +304,17 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    tqdm.write(results)
-        #record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
+                    #tqdm.write(results)
+                    #f.write(results + '\n')
+
+                    if KL < lowest_KL:
+                        lowest_KL = KL
+                        lowest_KL_epoch = epoch
+
+        record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
         #f.write(record + '\n')
         #f.write('\n')
-        #print(record)
+        print(record)
         #f.close()
 
 if __name__ == "__main__":
@@ -304,12 +322,12 @@ if __name__ == "__main__":
 
     visible_node_num = train_data.shape[1]
     hidden_node_num = 20
-    lr = 3 * 1e-2
+    lr = 2.5 * 1e-2
     # epoch:100000 lr: 5e-4  -------->  k = 1
 
-    for i in range(1):
+    for i in range(10):
         rbm = RBM(visible_node_num, hidden_node_num, lr,
             binary_kind="withzero",
-            epochs= 200000 , batch_size = 14, gibbs_num = 1, weight_decay = 1e-5,
+            epochs= 400000 , batch_size = 14, gibbs_num = 1, weight_decay = 1e-5,
             compute_detail=False)
         rbm.train(train_data)

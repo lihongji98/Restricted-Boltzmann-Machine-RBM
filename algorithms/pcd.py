@@ -71,7 +71,6 @@ class RBM:
 
         return np.array(state).reshape(p.shape[0], p.shape[1])
 
-
     def gibbs_sampling(self, v, k):
         i = 0
         #k = self.gibbs_num
@@ -88,7 +87,6 @@ class RBM:
             _, p_hk_v = self.sample_h(v_k)
 
         return v_0, v_k, p_h0_v, p_hk_v
-
 
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
         dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
@@ -125,7 +123,6 @@ class RBM:
             return np.array(all_cases([-1, 1], self.v_dim))
         else:
             print("enter 'withzero' or 'withoutzero'!")
-
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
         probability = []
@@ -201,6 +198,11 @@ class RBM:
                 end.append(len(idx))
         batch_idx = len(start)
 
+        lowest_KL = float("inf")
+        lowest_KL_epoch = 0
+
+        #f = open("records/pcd.log","w")
+
         persistant_chain = None
         for epoch in tqdm(range(self.epochs)):
         #for epoch in range(self.epochs):
@@ -221,9 +223,6 @@ class RBM:
                 _, vk, _, p_hk_v = self.gibbs_sampling(persistant_chain, k = self.gibbs_num)
                 self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
                 persistant_chain = vk
-
-            # lowest_KL = float("inf")
-            # lowest_KL_epoch = 0
 
             if self.compute_detail:
                 KL_list, log_LKH_list = [], []
@@ -263,7 +262,7 @@ class RBM:
                     print(results)
 
             else:
-                if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
+                if epoch + 1 == self.epochs or (epoch + 1) % 100 == 0 or epoch == 0:
                     logLKH, KL = 0, 0
                     Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                     probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -281,12 +280,17 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = "epoch: {}, KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}".format(epoch + 1, KL[0], logLKH[0], x, self.lr)
-                    #print(results)
-                    tqdm.write(results)
-        #record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
+                    #tqdm.write(results)
+                    #f.write(results + '\n')
+
+                    if KL < lowest_KL:
+                        lowest_KL = KL
+                        lowest_KL_epoch = epoch
+
+        record = "The lowest KL is {} in epoch {}".format(lowest_KL[0], lowest_KL_epoch)
         #f.write(record + '\n')
         #f.write('\n')
-        #print(record)
+        print(record)
         #f.close()
 
 
@@ -299,7 +303,7 @@ if __name__ == "__main__":
 
     # epoch250000, lr->1.1 *1e-4, weight_decay->1e-2
 
-    for i in range(1):
+    for i in range(10):
         print("lr = {}, weight_decay = {}".format(lr, weight_decay))
         rbm = RBM(visible_node_num, hidden_node_num, lr,
         binary_kind="withzero",
