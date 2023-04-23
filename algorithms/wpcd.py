@@ -4,17 +4,19 @@ from tqdm import tqdm
 
 class RBM:
     def __init__(self,
-                 v_dim, h_dim,
-                 lr=5e-4,
+                 v_dim = 14, h_dim = 20,
+                 lr=5e-4, exp_lrd = 0,
                  weight_decay = 1e-5,
                  gibbs_num = 1,
                  epochs = 50000,
                  batch_size = 1,
-                 compute_detail = True,
-                 binary_kind = "withoutzero"):
+                 compute_detail = False,
+                 binary_kind = "withzero"
+                 ):
         self.v_dim = v_dim
         self.h_dim = h_dim
         self.lr = lr
+        self.exp_lrd = exp_lrd
         self.weight_decay = weight_decay
         self.v_bias = np.random.normal(-0.1, 0.1, size = (1,self.v_dim))
         self.h_bias = np.random.normal(-0.1, 0.1, size =(1,self.h_dim))
@@ -155,8 +157,9 @@ class RBM:
         weights = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
         return weights / np.sum(weights)
 
-    def exp_decay(self, epoch, k = 5 * 1e-12): #9 * 1e-11
+    def exp_decay(self, epoch): #9 * 1e-11
        initial_lrate = self.lr
+       k = self.exp_lrd
        lrate = initial_lrate * np.exp(-k * epoch)
        return lrate
 
@@ -172,14 +175,16 @@ class RBM:
                 end.append(len(idx))
         data_num = len(start)
 
-        lowest_KL = float("inf")
         lowest_KL_epoch = 0
+        lowest_KL = float("inf")
+        highest_NLL = float("-inf")
+        highest_probsum = float("-inf")
 
         #f = open("records/wpcd.log","w")
 
         weighted_persistant_chain = None
-        for epoch in tqdm(range(self.epochs)):
-        #for epoch in range(self.epochs):
+        #for epoch in tqdm(range(self.epochs)):
+        for epoch in range(self.epochs):
             np.random.shuffle(train_data)
             self.lr = self.exp_decay(epoch)
 
@@ -256,31 +261,18 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    tqdm.write(results)
+                    #tqdm.write(results)
                     #f.write(results + '\n')
 
                     if KL < lowest_KL:
                         lowest_KL = KL
                         lowest_KL_epoch = epoch
+                        highest_NLL = logLKH
+                        highest_probsum = x
 
-        record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch)
+        record = "KL {} NLL {} prob_sum {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4))
         #f.write(record + '\n')
         #f.write('\n')
         print(record)
         #f.close()
 
-if __name__ == "__main__":
-    train_data = np.loadtxt(r'../3x3.txt')
-
-    visible_node_num = train_data.shape[1]
-    hidden_node_num = 20
-    lr = 5 * 1e-3
-    weight_decay = 2.5 * 1e-5
-    # epoch:100000 lr: 5e-4  -------->  k = 1
-
-    for i in range(1):
-        rbm = RBM(visible_node_num, hidden_node_num, lr,
-            binary_kind="withzero",
-            epochs= 400000 , batch_size = 14, gibbs_num = 1, weight_decay = 2.5 * 1e-5,
-            compute_detail=False)
-        rbm.train(train_data)

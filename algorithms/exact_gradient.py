@@ -144,7 +144,7 @@ class RBM:
                 _, p_h0_v = self.sample_h(v0)
                 self.gradient_compute(v0, p_h0_v, Z)
 
-            if epoch + 1 == self.epochs or (epoch + 1) % 5000 == 0 or epoch == 0:
+            if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
                 logLKH, KL = 0, 0
                 for i in range(len(probability_list)):
                     px_with_Z = probability_list[i]
@@ -179,6 +179,6 @@ if __name__ == "__main__":
 
     for i in range(1):
         rbm = RBM(visible_node_num, hidden_node_num, lr,
-            epochs= 200000, batch_size = 14)
+            epochs= 300000, batch_size = 14)
         rbm.train(train_data)
 
