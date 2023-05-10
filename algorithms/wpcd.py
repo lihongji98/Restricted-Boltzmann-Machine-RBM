@@ -4,14 +4,13 @@ from tqdm import tqdm
 
 class RBM:
     def __init__(self,
-                 v_dim = 14, h_dim = 20,
+                 v_dim = 14, h_dim = 27,
                  lr=5e-4, exp_lrd = 0,
                  weight_decay = 1e-5,
                  gibbs_num = 1,
                  epochs = 50000,
                  batch_size = 1,
                  compute_detail = False,
-                 binary_kind = "withzero"
                  ):
         self.v_dim = v_dim
         self.h_dim = h_dim
@@ -27,33 +26,16 @@ class RBM:
         self.epochs = epochs
         self.compute_detail = compute_detail
         self.batch_size = batch_size
-        self.binary_kind = binary_kind
-        self.allcases = self.get_all_cases(self.binary_kind, self.v_dim)
+        self.allcases = self.get_all_cases(self.v_dim)
 
     def sample_h(self, v_input):
-        if self.binary_kind == "withoutzero":
-            var = -(np.dot(v_input, self.W) + self.h_bias)
-            p_h_v = 1 / (1 + np.exp(2 * var))
-            state_h = self.state_sample(p_h_v)
-        elif self.binary_kind == "withzero":
-            p_h_v = 1 / (1 + np.exp(-(np.dot(v_input, self.W) + self.h_bias)))
-            state_h = self.state_sample(p_h_v)
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
+        p_h_v = 1 / (1 + np.exp(-(np.dot(v_input, self.W) + self.h_bias)))
+        state_h = self.state_sample(p_h_v)
         return state_h, p_h_v
 
     def sample_v(self, h):
-        if self.binary_kind == "withoutzero":
-            var = -(np.dot(h, self.W.T) + self.v_bias)
-            p_v_h = 1 / (1 + np.exp(2 * var))
-            state_v = self.state_sample(p_v_h)
-        elif self.binary_kind == "withzero":
-            p_v_h = 1 / (1 + np.exp(-(np.dot(h, self.W.T) + self.v_bias)))
-            state_v = self.state_sample(p_v_h)
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
-
+        p_v_h = 1 / (1 + np.exp(-(np.dot(h, self.W.T) + self.v_bias)))
+        state_v = self.state_sample(p_v_h)
         return state_v, p_v_h
 
     def state_sample(self, p):
@@ -80,29 +62,20 @@ class RBM:
         return v_0, v_k, p_h0_v, p_hk_v
 
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
-        v_k_copy = v_k.copy()
         v_k = np.float16(v_k)
         p_hk_v_copy = p_hk_v.copy()
-        # negative_sampling = np.dot(v_k.T, p_hk_v)/ self.batch_size
 
         weights = self.compute_weight(v_k, self.W, self.v_bias, self.h_bias)
-        #weights = [1/self.batch_size for _ in range(self.batch_size)]
         if len(v_k) == len(weights) == len(p_hk_v) == self.batch_size:
             for i in range(self.batch_size):
                 v_k[i] = v_k[i] * weights[i]
                 p_hk_v_copy[i] = p_hk_v[i] * weights[i]
 
-        else:
-            print("*" * 20)
-
         negative_sampling_w = np.dot(v_k.T, p_hk_v)
         negative_sampling_h_bias = np.sum(p_hk_v_copy, axis = 0)
         negative_sampling_v_bias = np.sum(v_k, axis = 0)
-        #print(np.float16(negative_sampling) == np.float16(negative_sampling_w))
-        dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_w
 
-        # dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
-        # dv_bias = (np.sum(v_0 - v_k_copy)) / self.batch_size
+        dw = np.dot(v_0.T, p_h0_v)  / self.batch_size - negative_sampling_w
         dh_bias = (np.sum(p_h0_v, axis = 0)) / self.batch_size - negative_sampling_h_bias
         dv_bias = (np.sum(v_0, axis = 0)) / self.batch_size - negative_sampling_v_bias
 
@@ -114,7 +87,7 @@ class RBM:
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
 
-    def get_all_cases(self, binary_kind, v_dim):
+    def get_all_cases(self, v_dim):
         def all_cases(nums, v_dim):
             res = []
             backtracking(nums, v_dim, [], 0, res)
@@ -129,13 +102,7 @@ class RBM:
                 path.append(nums[i])
                 backtracking(nums, v_dim, path, i + 1, res)
                 path.pop()
-        if binary_kind == "withzero":
-            return np.array(all_cases([0, 1], self.v_dim))
-
-        elif binary_kind == "withoutzero":
-            return np.array(all_cases([-1, 1], self.v_dim))
-        else:
-            print("enter 'withzero' or 'withoutzero'!")
+        return np.array(all_cases([0, 1], self.v_dim))
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
         train_data = np.float32(train_data)
@@ -183,8 +150,8 @@ class RBM:
         #f = open("records/wpcd.log","w")
 
         weighted_persistant_chain = None
-        #for epoch in tqdm(range(self.epochs)):
-        for epoch in range(self.epochs):
+        for epoch in tqdm(range(self.epochs)):
+        #for epoch in range(self.epochs):
             np.random.shuffle(train_data)
             self.lr = self.exp_decay(epoch)
 
@@ -203,8 +170,7 @@ class RBM:
                 self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
                 weighted_persistant_chain = vk
 
-            if self.compute_detail:
-                KL_list, log_LKH_list = [], []
+            if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
                 logLKH, KL = 0, 0
                 Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
                 probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -219,56 +185,17 @@ class RBM:
                     KL += kl
                 KL /= N
                 logLKH /= N
-
-                KL_list.append(KL)
-                log_LKH_list.append(logLKH)
-
                 probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                 x = np.sum(probability_list)
+                results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
+                tqdm.write(results)
+                #f.write(results + '\n')
 
-                epoch_end_time = time.time()
-
-                # if KL[0] < lowest_KL:
-                #     lowest_KL = KL[0]
-                #     lowest_KL_epoch = epoch
-
-                if(epoch % 100 == 0):
-                    results = 'epoch:{} ==>  KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, time = {:.2f}s' \
-                              .format(epoch, KL, logLKH, x, epoch_end_time-epoch_start_time)
-
-                    #f=open("log -1&1.txt","a")
-                    #f=open("50000epochs_new.txt","a")
-                    #f.write(results + '\n')
-                    #f.close()
-                    tqdm.write(results)
-
-            else:
-                if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
-                    logLKH, KL = 0, 0
-                    Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
-                    probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
-
-                    for i in range(len(probability_list)):
-                        px_with_Z = probability_list[i]
-                        N = len(probability_list)
-                        log_lkh = np.log(px_with_Z) - np.log(Z)
-                        logLKH += log_lkh
-
-                        kl = -np.log(N)/N - np.log(px_with_Z)/N + np.log(Z)/N
-                        KL += kl
-                    KL /= N
-                    logLKH /= N
-                    probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
-                    x = np.sum(probability_list)
-                    results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    #tqdm.write(results)
-                    #f.write(results + '\n')
-
-                    if KL < lowest_KL:
-                        lowest_KL = KL
-                        lowest_KL_epoch = epoch
-                        highest_NLL = logLKH
-                        highest_probsum = x
+                if KL < lowest_KL:
+                    lowest_KL = KL
+                    lowest_KL_epoch = epoch
+                    highest_NLL = logLKH
+                    highest_probsum = x
 
         record = "KL {} NLL {} prob_sum {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4))
         #f.write(record + '\n')
@@ -276,3 +203,60 @@ class RBM:
         print(record)
         #f.close()
 
+
+
+    def gradient_output(self, v_0, v_k, p_h0_v, p_hk_v):
+        dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
+        dv_bias = (np.sum(v_0 - v_k, axis = 0)) / self.batch_size
+
+        self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
+        self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
+        self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
+
+        self.W += self.lr * self.v_w - self.lr * self.weight_decay * self.W
+        self.v_bias += self.lr * self.v_v
+        self.h_bias += self.lr * self.v_h
+
+        return dw, dv_bias, dh_bias
+
+    def gradient_compare(self, train_data):
+        idx = [i for i in range(train_data.shape[0])]
+        start = [i for i in idx if i % self.batch_size == 0]
+        end = []
+        for start_idx in start:
+            end_idx = start_idx + self.batch_size
+            if end_idx < len(idx):
+                end.append(end_idx)
+            else:
+                end.append(len(idx))
+        data_num = len(start)
+
+        weighted_persistant_chain = None
+        dw_list, dv_bias_list, dh_bias_list = [], [], []
+        for epoch in tqdm(range(self.epochs)):
+        #for epoch in range(self.epochs):
+            np.random.shuffle(train_data)
+            self.lr = self.exp_decay(epoch)
+
+            for index in range(data_num):
+                v0 = train_data[start[index]: end[index]]
+                _, p_h0_v = self.sample_h(v0)
+
+                if weighted_persistant_chain is None:
+                    weighted_persistant_chain = np.random.binomial(1, 0.5, size=(self.batch_size, self.v_dim))
+                vk = v0.copy()
+                _, vk, _, p_hk_v = self.gibbs_sampling(weighted_persistant_chain)
+                dw, dv_bias, dh_bias = self.gradient_output(v0, vk, p_h0_v, p_hk_v)
+                weighted_persistant_chain = vk
+
+                if epoch % 1 == 0:
+                    dw_list.append(dw)
+                    dv_bias_list.append(dv_bias)
+                    dh_bias_list.append(dh_bias)
+        dw_list = np.array(dw_list).reshape(len(dw_list), self.v_dim, self.h_dim)
+        dv_bias_list = np.array(dv_bias_list).reshape(len(dv_bias_list), 1, self.v_dim)
+        dh_bias_list = np.array(dh_bias_list).reshape(len(dh_bias_list), 1, self.h_dim)
+        np.save("./gradient/dw.npy", dw_list)
+        np.save("./gradient/dvb.npy", dv_bias_list)
+        np.save("./gradient/dhb.npy", dh_bias_list)

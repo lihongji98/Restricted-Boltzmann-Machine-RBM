@@ -4,13 +4,15 @@ from tqdm import tqdm
 class RBM:
     def __init__(self,
                  v_dim, h_dim,
-                 lr=5e-4,
+                 lr=5e-4, exp_lrd = 0,
                  epochs = 50000,
-                 batch_size = 14
+                 batch_size = 14,
+                 output_epoch = 10000
                  ):
         self.v_dim = v_dim
         self.h_dim = h_dim
         self.lr = lr
+        self.exp_lrd = exp_lrd
         self.v_bias = np.random.normal(-0.1, 0.1, size = (1,self.v_dim))
         self.h_bias = np.random.normal(-0.1, 0.1, size =(1,self.h_dim))
         self.W = np.random.normal(size = (self.v_dim, self.h_dim))
@@ -18,6 +20,7 @@ class RBM:
         self.momentum = 0.9
         self.epochs = epochs
         self.batch_size = batch_size
+        self.output_epoch = output_epoch
         self.allcases = self.get_all_cases(self.v_dim)
 
     def sample_h(self, v_input):
@@ -60,7 +63,6 @@ class RBM:
         second_part = second_part.reshape(train_data.shape[0], 1)
         pxz = np.exp(first_part + second_part)
         return pxz.reshape(-1)
-        #(14,)
 
     def compute_Z(self, W, v_bias, h_bias):
         first_part = np.dot(self.allcases, v_bias.T).reshape(len(self.allcases), 1)
@@ -113,9 +115,15 @@ class RBM:
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
         self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
 
-        self.W += self.lr * self.v_w #- self.lr * self.weight_decay * self.W
+        self.W += self.lr * self.v_w
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
+
+    def exp_decay(self, epoch):
+       initial_lrate = self.lr
+       k = self.exp_lrd
+       lrate = initial_lrate * np.exp(-k * epoch)
+       return lrate
 
     def train(self, train_data):
         idx = [i for i in range(train_data.shape[0])]
@@ -130,21 +138,21 @@ class RBM:
         data_num = len(start)
 
         lowest_KL = float("inf")
-        lowest_KL_epoch = 0
+        highest_NLL = float("-inf")
+        highest_probsum = float("-inf")
 
         for epoch in tqdm(range(self.epochs)):
             Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
             probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
 
+            self.lr = self.exp_decay(epoch)
             np.random.shuffle(train_data)
-            #self.lr = self.exp_decay(epoch)
-            #self.momentum = 0
             for index in range(data_num):
                 v0 = train_data[start[index]: end[index]]
                 _, p_h0_v = self.sample_h(v0)
                 self.gradient_compute(v0, p_h0_v, Z)
 
-            if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
+            if epoch + 1 == self.epochs or (epoch + 1) % self.output_epoch == 0 or epoch == 0:
                 logLKH, KL = 0, 0
                 for i in range(len(probability_list)):
                     px_with_Z = probability_list[i]
@@ -163,22 +171,87 @@ class RBM:
 
                 if KL < lowest_KL:
                     lowest_KL = KL
-                    lowest_KL_epoch = epoch
-        record = "The lowest KL is {} in epoch {}".format(lowest_KL, lowest_KL_epoch + 1)
+                    highest_NLL = logLKH
+                    highest_probsum = x
+
+        record = "KL {} NLL {} prob_sum {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4))
         #f.write(record + '\n')
         #f.write('\n')
         print(record)
         #f.close()
 
+
+    def gradient_output(self, v, phx, Z):
+        dw_exp_model, dvb_exp_model, dhb_exp_model = self.compute_exp_model(Z)
+        dw_exp_data, dvb_exp_data, dhb_exp_data = self.compute_exp_data(v, phx)
+
+        dw = dw_exp_data - dw_exp_model
+        dv_bias = dvb_exp_data - dvb_exp_model
+        dh_bias = dhb_exp_data - dhb_exp_model
+
+        self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
+        self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
+        self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
+
+        self.W += self.lr * self.v_w #- self.lr * self.weight_decay * self.W
+        self.v_bias += self.lr * self.v_v
+        self.h_bias += self.lr * self.v_h
+
+        return dw, dv_bias, dh_bias
+
+    def gradient_compare(self, train_data):
+        idx = [i for i in range(train_data.shape[0])]
+        start = [i for i in idx if i % self.batch_size == 0]
+        end = []
+        for start_idx in start:
+            end_idx = start_idx + self.batch_size
+            if end_idx < len(idx):
+                end.append(end_idx)
+            else:
+                end.append(len(idx))
+        data_num = len(start)
+
+        dw_list, dv_bias_list, dh_bias_list = [], [], []
+        for epoch in tqdm(range(self.epochs)):
+            Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
+            probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
+
+            np.random.shuffle(train_data)
+            for index in range(data_num):
+                v0 = train_data[start[index]: end[index]]
+                _, p_h0_v = self.sample_h(v0)
+                dw, dv_bias, dh_bias = self.gradient_output(v0, p_h0_v, Z)
+
+                if epoch % 1 == 0:
+                    dw_list.append(dw)
+                    dv_bias_list.append(dv_bias)
+                    dh_bias_list.append(dh_bias)
+        dw_list = np.array(dw_list).reshape(len(dw_list), self.v_dim, self.h_dim)
+        dv_bias_list = np.array(dv_bias_list).reshape(len(dv_bias_list), 1, self.v_dim)
+        dh_bias_list = np.array(dh_bias_list).reshape(len(dh_bias_list), 1, self.h_dim)
+        np.save("./gradient/exact_dw.npy", dw_list)
+        np.save("./gradient/exact_dvb.npy", dv_bias_list)
+        np.save("./gradient/exact_dhb.npy", dh_bias_list)
+
+
 if __name__ == "__main__":
-    train_data = np.loadtxt(r'../3x3.txt')
+    train_data = np.loadtxt(r'./data/Bars-and-Stripes-3x3.txt')
+                            # './data/Bars-and-Stripes-3x3.txt' (14, 9) 27
+                            # './data/Bars-and-Stripes-4x4.txt' (30, 16) 48
+                            # './data/Labeled-Shifter-4-11.txt' (48, 11) 33
+                            # './data/Labeled-Shifter-5-13.txt' (96, 13) 39
 
-    visible_node_num = train_data.shape[1]
-    hidden_node_num = 20
-    lr = 5 * 1e-3
-
-    for i in range(1):
-        rbm = RBM(visible_node_num, hidden_node_num, lr,
-            epochs= 300000, batch_size = 14)
-        rbm.train(train_data)
-
+    rbm = RBM(v_dim = train_data.shape[1],
+                h_dim = train_data.shape[1] * 3,
+                lr = 3e-3,
+                exp_lrd = 1e-10,
+                epochs= 350000, # 300000, lr 3e-3 lr_decay 1e-10
+                batch_size = 14,
+                output_epoch = 5000
+                )
+    
+    rbm.W = np.load('initial/W_3.npy')
+    rbm.v_bias = np.load('initial/v_bias_3.npy')
+    rbm.h_bias = np.load('initial/h_bias_3.npy')
+    
+    rbm.train(train_data)

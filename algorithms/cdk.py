@@ -1,10 +1,9 @@
 import numpy as np
-import time
 from tqdm import tqdm
 
 class RBM:
     def __init__(self,
-                 v_dim = 14, h_dim = 20,
+                 v_dim = 14, h_dim = 27,
                  lr=5e-4, exp_lrd = 0,
                  weight_decay = 1e-5,
                  gibbs_num = 1,
@@ -88,7 +87,7 @@ class RBM:
         self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
         self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
 
-        self.W += self.lr * self.v_w #- self.lr * self.weight_decay * self.W
+        self.W += self.lr * self.v_w
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
 
@@ -155,9 +154,8 @@ class RBM:
         # else:
         #     pass
 
-        #for epoch in tqdm(range(self.epochs)):
-        for epoch in range(self.epochs):
-            epoch_start_time = time.time()
+        for epoch in tqdm(range(self.epochs)):
+        #for epoch in range(self.epochs):
             for index in range(data_num):
                 # positive sampling
                 v0 = train_data[start[index]: end[index]]
@@ -205,7 +203,7 @@ class RBM:
                     #f=open("50000epochs_new.txt","a")
                     #f.write(results + '\n')
                     #f.close()
-                    tqdm.write(results)
+                    #tqdm.write(results)
 
             else:
                 if epoch + 1 == self.epochs or (epoch + 1) % 10000 == 0 or epoch == 0:
@@ -226,7 +224,7 @@ class RBM:
                     probability_list = [probability_list[i]/Z for i in range(len(probability_list))]
                     x = np.sum(probability_list)
                     results = 'epoch {}: KL = {:.4f}, logLKH = {:.4f}, prob_sum = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, self.lr)
-                    #tqdm.write(results)
+                    tqdm.write(results)
                     #f.write(results + '\n')
 
                     if KL < lowest_KL:
@@ -238,6 +236,74 @@ class RBM:
         #f.write(record + '\n')
         #f.write('\n')c
         #tqdm.write(record)
-        print(record)
+        tqdm.write(record)
         #f.close()
 
+    def gradient_output(self, v_0, v_k, p_h0_v, p_hk_v):
+        dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
+        dh_bias = (np.sum(p_h0_v - p_hk_v, axis = 0)) / self.batch_size
+        dv_bias = (np.sum(v_0 - v_k, axis = 0)) / self.batch_size
+
+        self.v_w = self.momentum * self.v_w + (1 - self.momentum) * dw
+        self.v_h = self.momentum * self.v_h + (1 - self.momentum) * dh_bias
+        self.v_v = self.momentum * self.v_v + (1 - self.momentum) * dv_bias
+
+        self.W += self.lr * self.v_w
+        self.v_bias += self.lr * self.v_v
+        self.h_bias += self.lr * self.v_h
+
+        return dw, dv_bias, dh_bias
+
+    def gradient_compare(self, train_data):
+        idx = [i for i in range(train_data.shape[0])]
+        start = [i for i in idx if i%self.batch_size == 0]
+        end = []
+        for start_idx in start:
+            end_idx = start_idx + self.batch_size
+            if end_idx < len(idx):
+                end.append(end_idx)
+            else:
+                end.append(len(idx))
+        data_num = len(start)
+
+        dw_list, dv_bias_list, dh_bias_list = [], [], []
+        for epoch in tqdm(range(self.epochs)):
+        #for epoch in range(self.epochs):
+            for index in range(data_num):
+                # positive sampling
+                v0 = train_data[start[index]: end[index]]
+                _, p_h0_v = self.sample_h(v0)
+
+                # negative sampling
+                vk = v0.copy()
+                _, vk, _, p_hk_v = self.gibbs_sampling(v0)
+                dw, dv_bias, dh_bias = self.gradient_output(v0, vk, p_h0_v, p_hk_v)
+
+                if epoch % 1 == 0:
+                    dw_list.append(dw)
+                    dv_bias_list.append(dv_bias)
+                    dh_bias_list.append(dh_bias)
+        dw_list = np.array(dw_list).reshape(len(dw_list), self.v_dim, self.h_dim)
+        dv_bias_list = np.array(dv_bias_list).reshape(len(dv_bias_list), 1, self.v_dim)
+        dh_bias_list = np.array(dh_bias_list).reshape(len(dh_bias_list), 1, self.h_dim)
+        np.save("./gradient/dw.npy", dw_list)
+        np.save("./gradient/dvb.npy", dv_bias_list)
+        np.save("./gradient/dhb.npy", dh_bias_list)
+
+
+
+
+if __name__ == "__main__":
+    train_data = np.loadtxt(r'./data/Bars-and-Stripes-3x3.txt')
+                            # './data/Bars-and-Stripes-3x3.txt' (14, 9) 27
+
+    rbm = RBM(v_dim = train_data.shape[1],
+                gibbs_num = 1,
+                h_dim = 27,
+                lr = 1e-3,
+                epochs= 1000000,
+                batch_size = 14,
+                weight_decay = 0,
+                exp_lrd = 0,
+                )
+    rbm.train(train_data)
