@@ -1,0 +1,168 @@
+**************************************************
+data_path: ./data/BS3.txt
+opt_type: cdk
+sampling_type: parallel_tempering
+gibbs_num: 1
+chain_num: 2
+lr: 0.005
+if_lr_decay: True
+weight_decay: 0
+epochs: 100000
+metric_update_epoch: 10
+**************************************************
+KL 0.0084 NLL -2.7566 prob_sum 0.9057 entropy_per 0.9934
+KL 0.0074 NLL -2.7431 prob_sum 0.9133 entropy_per 0.995
+KL 0.0078 NLL -2.7489 prob_sum 0.9021 entropy_per 0.9974
+KL 0.0096 NLL -2.774 prob_sum 0.896 entropy_per 0.9906
+KL 0.0081 NLL -2.7525 prob_sum 0.9019 entropy_per 0.9962
+KL 0.0088 NLL -2.7627 prob_sum 0.8884 entropy_per 0.9979
+KL 0.0084 NLL -2.756 prob_sum 0.9067 entropy_per 0.993
+KL 0.0069 NLL -2.735 prob_sum 0.9192 entropy_per 0.9957
+KL 0.0094 NLL -2.7708 prob_sum 0.8865 entropy_per 0.9957
+KL 0.0091 NLL -2.7663 prob_sum 0.8939 entropy_per 0.9942
+KL 0.0073 NLL -2.7417 prob_sum 0.9107 entropy_per 0.9965
+KL 0.0087 NLL -2.7605 prob_sum 0.8935 entropy_per 0.9965
+KL 0.007 NLL -2.7366 prob_sum 0.9103 entropy_per 0.9986
+KL 0.0096 NLL -2.773 prob_sum 0.8819 entropy_per 0.9968
+KL 0.0087 NLL -2.7612 prob_sum 0.8981 entropy_per 0.9944
+KL 0.0073 NLL -2.7418 prob_sum 0.9106 entropy_per 0.9967
+KL 0.0078 NLL -2.748 prob_sum 0.9047 entropy_per 0.9966
+KL 0.0081 NLL -2.753 prob_sum 0.8997 entropy_per 0.9968
+KL 0.0074 NLL -2.7423 prob_sum 0.9157 entropy_per 0.9939
+KL 0.0103 NLL -2.7834 prob_sum 0.8795 entropy_per 0.994
+KL 0.0093 NLL -2.7691 prob_sum 0.8893 entropy_per 0.9949
+KL 0.0091 NLL -2.7662 prob_sum 0.8907 entropy_per 0.9957
+KL 0.0076 NLL -2.7461 prob_sum 0.903 entropy_per 0.9981
+KL 0.0092 NLL -2.7681 prob_sum 0.8868 entropy_per 0.9966
+KL 0.0072 NLL -2.7396 prob_sum 0.914 entropy_per 0.9959
+KL 0.0092 NLL -2.7676 prob_sum 0.886 entropy_per 0.9972
+KL 0.0087 NLL -2.761 prob_sum 0.8956 entropy_per 0.9953
+KL 0.0089 NLL -2.7637 prob_sum 0.8997 entropy_per 0.9932
+KL 0.0086 NLL -2.7599 prob_sum 0.8999 entropy_per 0.9943
+KL 0.008 NLL -2.7506 prob_sum 0.9019 entropy_per 0.9967
+**************************************************
+data_path: ./data/BS4.txt
+opt_type: cdk
+sampling_type: parallel_tempering
+gibbs_num: 1
+chain_num: 2
+lr: 0.005
+if_lr_decay: True
+weight_decay: 0
+epochs: 100000
+metric_update_epoch: 10
+**************************************************
+KL 0.0067 NLL -3.6011 prob_sum 0.9056 entropy_per 0.9708
+KL 0.0073 NLL -3.6206 prob_sum 0.9126 entropy_per 0.9622
+KL 0.0063 NLL -3.5916 prob_sum 0.8857 entropy_per 0.9808
+KL 0.0073 NLL -3.6193 prob_sum 0.8765 entropy_per 0.9739
+KL 0.0067 NLL -3.602 prob_sum 0.8869 entropy_per 0.9771
+KL 0.006 NLL -3.5812 prob_sum 0.8968 entropy_per 0.9786
+KL 0.0049 NLL -3.5468 prob_sum 0.8984 entropy_per 0.9894
+KL 0.0084 NLL -3.6519 prob_sum 0.9101 entropy_per 0.9487
+KL 0.0071 NLL -3.6134 prob_sum 0.905 entropy_per 0.9685
+KL 0.0066 NLL -3.6002 prob_sum 0.8727 entropy_per 0.9823
+KL 0.0065 NLL -3.5952 prob_sum 0.896 entropy_per 0.9762
+KL 0.0054 NLL -3.5636 prob_sum 0.8907 entropy_per 0.9859
+KL 0.0068 NLL -3.6057 prob_sum 0.9053 entropy_per 0.9685
+KL 0.0068 NLL -3.6038 prob_sum 0.8961 entropy_per 0.9739
+KL 0.006 NLL -3.5812 prob_sum 0.8897 entropy_per 0.9803
+KL 0.0062 NLL -3.5885 prob_sum 0.8947 entropy_per 0.9768
+KL 0.0067 NLL -3.601 prob_sum 0.8867 entropy_per 0.9776
+KL 0.0061 NLL -3.583 prob_sum 0.9046 entropy_per 0.9756
+KL 0.0053 NLL -3.5612 prob_sum 0.8963 entropy_per 0.9852
+KL 0.0062 NLL -3.5871 prob_sum 0.8905 entropy_per 0.9804
+KL 0.0075 NLL -3.626 prob_sum 0.9002 entropy_per 0.9626
+KL 0.0077 NLL -3.6322 prob_sum 0.8922 entropy_per 0.9664
+KL 0.0066 NLL -3.6001 prob_sum 0.9018 entropy_per 0.9702
+KL 0.0061 NLL -3.5831 prob_sum 0.9007 entropy_per 0.9766
+KL 0.0075 NLL -3.6252 prob_sum 0.9146 entropy_per 0.9606
+KL 0.0057 NLL -3.5712 prob_sum 0.8854 entropy_per 0.9862
+KL 0.0068 NLL -3.6061 prob_sum 0.8812 entropy_per 0.9771
+KL 0.0055 NLL -3.5654 prob_sum 0.8944 entropy_per 0.985
+KL 0.0056 NLL -3.5697 prob_sum 0.8982 entropy_per 0.9822
+KL 0.0067 NLL -3.6035 prob_sum 0.9052 entropy_per 0.9657
+**************************************************
+data_path: ./data/LS4.txt
+opt_type: cdk
+sampling_type: parallel_tempering
+gibbs_num: 1
+chain_num: 2
+lr: 0.02
+if_lr_decay: True
+weight_decay: 0
+epochs: 100000
+metric_update_epoch: 10
+**************************************************
+KL 0.0026 NLL -3.9978 prob_sum 0.8943 entropy_per 0.9963
+KL 0.0024 NLL -3.9882 prob_sum 0.903 entropy_per 0.9962
+KL 0.0028 NLL -4.0034 prob_sum 0.8975 entropy_per 0.9936
+KL 0.0028 NLL -4.0044 prob_sum 0.8942 entropy_per 0.9944
+KL 0.0025 NLL -3.9914 prob_sum 0.9008 entropy_per 0.996
+KL 0.0026 NLL -3.996 prob_sum 0.895 entropy_per 0.9964
+KL 0.0026 NLL -3.9961 prob_sum 0.8987 entropy_per 0.9955
+KL 0.0025 NLL -3.9889 prob_sum 0.9009 entropy_per 0.9966
+KL 0.0024 NLL -3.9875 prob_sum 0.9029 entropy_per 0.9964
+KL 0.0024 NLL -3.9876 prob_sum 0.902 entropy_per 0.9966
+KL 0.0026 NLL -3.9974 prob_sum 0.8976 entropy_per 0.9952
+KL 0.0025 NLL -3.989 prob_sum 0.9068 entropy_per 0.995
+KL 0.0024 NLL -3.9876 prob_sum 0.901 entropy_per 0.9968
+KL 0.0025 NLL -3.9927 prob_sum 0.9067 entropy_per 0.9939
+KL 0.0025 NLL -3.9917 prob_sum 0.9004 entropy_per 0.9959
+KL 0.0027 NLL -3.9997 prob_sum 0.902 entropy_per 0.9936
+KL 0.0026 NLL -3.9964 prob_sum 0.893 entropy_per 0.9969
+KL 0.0025 NLL -3.9899 prob_sum 0.8976 entropy_per 0.9972
+KL 0.0027 NLL -3.9997 prob_sum 0.8943 entropy_per 0.9957
+KL 0.0025 NLL -3.9895 prob_sum 0.8994 entropy_per 0.9969
+KL 0.0025 NLL -3.9895 prob_sum 0.9014 entropy_per 0.9962
+KL 0.0027 NLL -3.9991 prob_sum 0.9031 entropy_per 0.9935
+KL 0.0026 NLL -3.9941 prob_sum 0.8948 entropy_per 0.997
+KL 0.0023 NLL -3.9838 prob_sum 0.9081 entropy_per 0.9958
+KL 0.0023 NLL -3.9802 prob_sum 0.9076 entropy_per 0.9969
+KL 0.0024 NLL -3.9861 prob_sum 0.9033 entropy_per 0.9966
+KL 0.0025 NLL -3.9921 prob_sum 0.9017 entropy_per 0.9956
+KL 0.0024 NLL -3.988 prob_sum 0.8992 entropy_per 0.9973
+KL 0.0026 NLL -3.9984 prob_sum 0.896 entropy_per 0.9955
+KL 0.0027 NLL -3.9994 prob_sum 0.8947 entropy_per 0.9958
+**************************************************
+data_path: ./data/LS5.txt
+opt_type: cdk
+sampling_type: parallel_tempering
+gibbs_num: 1
+chain_num: 2
+lr: 0.02
+if_lr_decay: True
+weight_decay: 0
+epochs: 100000
+metric_update_epoch: 10
+**************************************************
+KL 0.0017 NLL -4.7284 prob_sum 0.8693 entropy_per 0.9948
+KL 0.0017 NLL -4.7304 prob_sum 0.8608 entropy_per 0.9965
+KL 0.0017 NLL -4.7262 prob_sum 0.8718 entropy_per 0.9945
+KL 0.0018 NLL -4.7329 prob_sum 0.863 entropy_per 0.9953
+KL 0.002 NLL -4.7569 prob_sum 0.8439 entropy_per 0.9952
+KL 0.0017 NLL -4.731 prob_sum 0.8625 entropy_per 0.9959
+KL 0.0018 NLL -4.733 prob_sum 0.866 entropy_per 0.9946
+KL 0.0017 NLL -4.7285 prob_sum 0.8723 entropy_per 0.994
+KL 0.0016 NLL -4.7175 prob_sum 0.8663 entropy_per 0.9979
+KL 0.0016 NLL -4.7182 prob_sum 0.8754 entropy_per 0.9955
+KL 0.0017 NLL -4.7292 prob_sum 0.8591 entropy_per 0.9972
+KL 0.0017 NLL -4.7282 prob_sum 0.862 entropy_per 0.9966
+KL 0.0018 NLL -4.7388 prob_sum 0.8564 entropy_per 0.9959
+KL 0.0014 NLL -4.7032 prob_sum 0.8839 entropy_per 0.9967
+KL 0.0017 NLL -4.7271 prob_sum 0.8662 entropy_per 0.9959
+KL 0.0017 NLL -4.7278 prob_sum 0.8632 entropy_per 0.9964
+KL 0.0017 NLL -4.7236 prob_sum 0.8673 entropy_per 0.9963
+KL 0.0018 NLL -4.7375 prob_sum 0.8552 entropy_per 0.9964
+KL 0.0017 NLL -4.7296 prob_sum 0.8684 entropy_per 0.9947
+KL 0.0017 NLL -4.7249 prob_sum 0.8766 entropy_per 0.9937
+KL 0.0016 NLL -4.7207 prob_sum 0.8721 entropy_per 0.9958
+KL 0.0019 NLL -4.7434 prob_sum 0.8525 entropy_per 0.9958
+KL 0.0017 NLL -4.7323 prob_sum 0.862 entropy_per 0.9957
+KL 0.0017 NLL -4.729 prob_sum 0.8614 entropy_per 0.9967
+KL 0.0019 NLL -4.7436 prob_sum 0.8531 entropy_per 0.9955
+KL 0.0018 NLL -4.7354 prob_sum 0.859 entropy_per 0.9959
+KL 0.0017 NLL -4.7318 prob_sum 0.8635 entropy_per 0.9955
+KL 0.0018 NLL -4.7356 prob_sum 0.8577 entropy_per 0.9962
+KL 0.0017 NLL -4.7283 prob_sum 0.8774 entropy_per 0.993
+KL 0.0017 NLL -4.7323 prob_sum 0.86 entropy_per 0.9964

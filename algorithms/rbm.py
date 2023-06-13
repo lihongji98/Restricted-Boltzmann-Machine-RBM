@@ -5,7 +5,8 @@ class RBM:
     def __init__(self,
                  v_dim, h_dim,
                  opt_type, sampling_type,
-                 lr=1e-3, exp_lrd = 0,
+                 lr=1e-3,
+                 if_lr_decay=True,
                  weight_decay = 0,
                  gibbs_num = 1,
                  epochs = 100000,
@@ -20,21 +21,24 @@ class RBM:
         self.W = np.random.normal(size = (self.v_dim, self.h_dim))
 
         self.lr = lr
-        self.exp_lrd = exp_lrd
+        self.init_lr = lr
+        self.if_lr_decay = if_lr_decay
         self.weight_decay = weight_decay
-        
-        self.sampling_type = sampling_type
-        self.gibbs_num = gibbs_num
-        if self.sampling_type == "parallel_tempering":
-            self.chain_num = chain_num
-            self.chains = np.float32(np.random.binomial(1, 0.5, (self.chain_num, self.v_dim)))
-            self.beta = np.linspace(0.0, 1.0, self.chain_num).reshape(self.chain_num, 1)
 
         self.opt_type = opt_type
         self.v_w, self.v_v, self.v_h = 0, 0, 0
         self.momentum = 0.9
         self.epochs = epochs
         self.batch_size = batch_size
+        
+        self.sampling_type = sampling_type
+        self.gibbs_num = gibbs_num
+        if self.sampling_type == "parallel_tempering":
+            self.chain_num = chain_num
+            self.chains = np.float32(np.random.binomial(1, 0.5, (self.chain_num, self.v_dim)))
+            self.chains_opt = np.float32(np.random.binomial(1, 0.5, (self.batch_size, self.chain_num, self.v_dim)))
+            self.beta = np.linspace(0.0, 1.0, self.chain_num).reshape(self.chain_num, 1)
+            self.swap_time = max(int(np.sqrt(self.chain_num)), 2)
 
         self.output_epoch = output_epoch
         self.allcases = self.get_all_cases(self.v_dim)
@@ -51,7 +55,7 @@ class RBM:
         return state_v, p_v_h
 
     def state_sample(self, p):
-        uni = np.random.uniform(0,1, size = (p.shape[0], p.shape[1]))
+        uni = np.random.uniform(0,1, size = (p.shape))
         condition = np.less(p, uni)
         state_node = np.where(condition, 0, 1)
         return state_node
@@ -71,60 +75,84 @@ class RBM:
             _, p_hk_v = self.sample_h(v_k)
         return v_0, v_k, p_h0_v, p_hk_v
 
-    def parallel_tempering(self, v):
-        beta =  self.beta
-        samples = np.empty((v.shape[0], self.v_dim))
-        for i in range(v.shape[0]):
-            x = (np.dot(self.chains, self.W) + self.h_bias) * beta
+    def parallel_tempering_opt(self, v):
+        x = (np.einsum("bcv,vh->bch", self.chains_opt, self.W) + self.h_bias) * self.beta
+        p_h_v = np.power(np.exp(-x) + 1, -1)
+        hid = self.state_sample(p_h_v)
+        for _ in range(self.gibbs_num):
+            x = (np.einsum("bch,vh->bcv", hid, self.W) + self.v_bias) * self.beta
+            p_v_h = np.power(np.exp(-x) + 1, -1)
+            vis = self.state_sample(p_v_h)
+
+            x = (np.einsum("bcv,vh->bch", vis, self.W) + self.h_bias) * self.beta
             p_h_v = np.power(np.exp(-x) + 1, -1)
             hid = self.state_sample(p_h_v)
-            for _ in range(self.gibbs_num):
-                x = (np.dot(hid, self.W.T) + self.v_bias) * beta
-                p_v_h = np.power(np.exp(-x) + 1, -1)
-                vis = self.state_sample(p_v_h)
+        self.chains_opt = np.power(np.exp(-(np.einsum("bch,vh->bcv", hid, self.W) + self.v_bias) * self.beta) + 1, -1)
+        self.swap_state_opt(self.chains_opt, hid)
 
-                x = (np.dot(vis, self.W) + self.h_bias) * beta
-                p_h_v = np.power(np.exp(-x) + 1, -1)
-                hid = self.state_sample(p_h_v)
-
-            self.chains = np.power(np.exp(-((np.dot(hid, self.W.T) + self.v_bias) * beta)) + 1, -1)
-            # p_v_h
-            self.swap_state(self.chains, hid)
-            samples[i, :] = np.copy(self.chains[self.beta.shape[0] - 1, :])
-
-            self.chains = self.state_sample(self.chains)
-
+        samples = self.chains_opt[:,-1,:]
         v_k = self.state_sample(samples)
         p_hk_v = np.power(np.exp(-(np.dot(v_k, self.W) + self.h_bias)) + 1, -1)
         return samples, v_k, p_hk_v
 
-    def swap_state(self, chain, h):
-        # r = exp{(beta_i - beta_i+1) * (E_i - E_i+1)}
-        beta = self.beta
-        particle = np.arange(self.chain_num)
+    def swap_state_opt(self, chain, hid):
+        energy = - np.einsum("bcv,vh,bch->bc",chain, self.W, hid) - np.einsum("lv,bcv->bc", self.v_bias,chain) - np.einsum("lh,bch->bc", self.h_bias, hid)
+        energy = energy.reshape(self.batch_size, self.chain_num, 1) * self.beta
+        #particle = np.resize(np.arange(self.chain_num), (self.batch_size, self.chain_num))
+        for _ in range(self.swap_time):
+            odd_ind = [i for i in range(0, len(self.beta) - 1, 2)]
+            odd_ind_next = [i+1 for i in range(0, len(self.beta) - 1, 2)]
+            odd_e = energy.reshape(self.batch_size, self.chain_num)[:,odd_ind]
+            odd1_e = energy.reshape(self.batch_size, self.chain_num)[:,odd_ind_next]
+            odd_beta = self.beta.reshape(self.chain_num)[odd_ind]
+            odd1_beta = self.beta.reshape(self.chain_num)[odd_ind_next]
+            r_odd = np.exp((odd1_e - odd_e) * (odd1_beta - odd_beta))
+            r_odd = np.where(r_odd > np.random.rand(self.batch_size, len(odd_ind)), 1, 0)
+            for i in range(r_odd.shape[0]):
+                for j in range(r_odd.shape[1]):
+                    if r_odd[i][j] == 1:
+                        #particle[i][odd_ind[j]], particle[i][odd_ind[j] + 1] = particle[i][odd_ind[j] + 1], particle[i][odd_ind[j]]
+                        temp1 = chain[i][odd_ind[j],:].copy()
+                        temp2 = chain[i][odd_ind[j]+1,:].copy()
+                        chain[i][odd_ind[j]+1,:] = temp1
+                        chain[i][odd_ind[j],:] = temp2
 
-        energy = - np.einsum("cv,vh,ch->c",chain,self.W,h) - np.einsum("lv,cv->c", self.v_bias,chain) - np.einsum("lh,ch->c", self.h_bias, h)
-        energy = energy.reshape(self.chain_num, 1) * beta
+                        temp1 = energy[i][odd_ind[j],:].copy()
+                        temp2 = energy[i][odd_ind[j]+1,:].copy()
+                        energy[i][odd_ind[j]+1,:] = temp1
+                        energy[i][odd_ind[j],:] = temp2
 
-        for t in range(0, beta.shape[0] - 1, 2): # beta (4,1)
-            r = np.exp((energy[t + 1, 0] - energy[t, 0]) * (beta[t + 1, 0] - beta[t, 0]))
-            if r > 1.0: r = 1.0
-            if r > np.random.rand():
-                chain[[t, t + 1], :] = chain[[t + 1, t], :]
-                energy[[t, t + 1], :] = energy[[t + 1, t], :]
-                h[[t, t + 1], :] = h[[t + 1, t], :]
-                particle[t], particle[t+1] = particle[t+1], particle[t]
+                        temp1 = hid[i][odd_ind[j],:].copy()
+                        temp2 = hid[i][odd_ind[j]+1,:].copy()
+                        hid[i][odd_ind[j]+1,:] = temp1
+                        hid[i][odd_ind[j],:] = temp2
 
-        for t in range(1, beta.shape[0] - 1, 2): # beta (4,1)
-            r = np.exp((energy[t + 1, 0] - energy[t, 0]) * (beta[t + 1, 0] - beta[t, 0]))
-            if r > 1.0: r = 1.0
-            if r > np.random.rand():
-                chain[[t, t + 1], :] = chain[[t + 1, t], :]
-                energy[[t, t + 1], :] = energy[[t + 1, t], :]
-                h[[t, t + 1], :] = h[[t + 1, t], :]
-                particle[t], particle[t+1] = particle[t+1], particle[t]
-        # print(particle)
-        # print("*"*20)
+            even_ind = [i for i in range(1, len(self.beta) - 1, 2)]
+            even_ind_next = [i+1 for i in range(1, len(self.beta) - 1, 2)]
+            even_e = energy.reshape(self.batch_size, self.chain_num)[:,even_ind]
+            even1_e = energy.reshape(self.batch_size, self.chain_num)[:, even_ind_next]
+            even_beta = self.beta.reshape(self.chain_num)[even_ind]
+            even1_beta = self.beta.reshape(self.chain_num)[even_ind_next]
+            r_even = np.exp((even1_e - even_e) * (even1_beta - even_beta))
+            r_even = np.where(r_even > np.random.rand(self.batch_size, len(even_ind)), 1, 0)
+            for i in range(r_even.shape[0]):
+                for j in range(r_even.shape[1]):
+                    if r_even[i][j] == 1:
+                        #particle[i][even_ind[j]], particle[i][even_ind[j] + 1] = particle[i][even_ind[j] + 1], particle[i][even_ind[j]]
+                        temp1 = chain[i][even_ind[j],:].copy()
+                        temp2 = chain[i][even_ind[j]+1,:].copy()
+                        chain[i][even_ind[j]+1,:] = temp1
+                        chain[i][even_ind[j],:] = temp2
+
+                        temp1 = energy[i][even_ind[j],:].copy()
+                        temp2 = energy[i][even_ind[j]+1,:].copy()
+                        energy[i][even_ind[j]+1,:] = temp1
+                        energy[i][even_ind[j],:] = temp2
+
+                        temp1 = hid[i][even_ind[j],:].copy()
+                        temp2 = hid[i][even_ind[j]+1,:].copy()
+                        hid[i][even_ind[j]+1,:] = temp1
+                        hid[i][even_ind[j],:] = temp2   
 
     def gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
         dw = (np.dot(v_0.T, p_h0_v) - np.dot(v_k.T, p_hk_v)) / self.batch_size
@@ -138,6 +166,8 @@ class RBM:
         self.W += self.lr * self.v_w - self.lr * self.weight_decay * self.W
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
+
+        return dw, dv_bias, dh_bias
 
     def weighted_gradient_compute(self, v_0, v_k, p_h0_v, p_hk_v):
         v_k = np.float16(v_k)
@@ -168,6 +198,8 @@ class RBM:
         self.W += self.lr * self.v_w - self.lr * self.weight_decay * self.W
         self.v_bias += self.lr * self.v_v
         self.h_bias += self.lr * self.v_h
+
+        return dw, dv_bias, dh_bias
 
     def compute_weight(self, train_data, W, v_bias, h_bias):
         weights = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias)
@@ -205,10 +237,11 @@ class RBM:
         Z = np.sum(np.exp(first_part + second_part).reshape(-1))
         return Z
 
-    def exp_decay(self, epoch):
-       initial_lrate = self.lr
-       k = self.exp_lrd
-       lrate = initial_lrate * np.exp(-k * epoch)
+    def lr_decay(self, epoch):
+    #    initial_lrate = self.lr
+    #    k = self.exp_lrd 
+    #    lrate = initial_lrate * np.exp(-k * epoch)
+       lrate = (1e-6 - self.init_lr)/ self.epochs * epoch + self.init_lr
        return lrate
 
     def batch_index(self, train_data):
@@ -224,39 +257,37 @@ class RBM:
         data_num = len(start)
         return start, end, data_num
 
-    def compute_metrics(self, epoch):
+    def compute_metrics(self, epoch, batch, train_data):
         logLKH, KL, x = 0, 0, 0
         Z = self.compute_Z(self.W, self.v_bias, self.h_bias)
         probability_list = self.compute_px_with_Z(train_data, self.W, self.v_bias, self.h_bias) / Z
         scaled_probability_list = probability_list / np.sum(probability_list)
+        N = len(probability_list)
 
-        for i in range(len(probability_list)):
-            px= probability_list[i]
-            N = len(probability_list)
-            logLKH += np.log(px)
-
-            x += px
-
-            kl = -np.log(N)/N - np.log(px)/N
-            KL += kl
-        KL /= N
-        logLKH /= N
-        Entropy = -np.sum(scaled_probability_list * np.log(scaled_probability_list))
-        results = 'epoch {}: KL = {:.5f}, logLKH = {:.4f}, prob_sum = {:.4f}, entropy = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, Entropy, self.lr)
+        KL = -np.log(N) / N - np.sum((np.log(probability_list) / N)) / N
+        logLKH = np.sum(np.log(probability_list)) / N
+        x = np.sum(probability_list)
+        Entropy = -np.sum(scaled_probability_list * np.log(scaled_probability_list))/np.log(batch)
+        results = 'epoch {}: KL = {:.5f}, logLKH = {:.4f}, prob_sum = {:.4f}, entropy_per = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, Entropy, self.lr)
+        # print(probability_list)
         return results, KL, logLKH, x, Entropy
 
-    def train(self, train_data):
+    def train(self, train_data, step):
         start, end, data_num = self.batch_index(train_data)
-        lowest_KL, highest_NLL, highest_probsum = float("inf"), float("inf"), float("inf")
+        batch = train_data.shape[0]
+        lowest_KL, highest_NLL, highest_probsum, entropy_per = float("inf"), float("inf"), float("inf"), float("inf")
 
-        #f = open("records/wcd.log","w")
+        KL_records = []
+
+        dw_approximation, dvb_approximation, dhb_approximation = [], [], []
 
         if self.opt_type == "pcd" or "wpcd":
             persistent_chain = None
         
-        for epoch in tqdm(range(self.epochs)):
-        #for epoch in range(self.epochs):
-            self.lr = self.exp_decay(epoch)
+        pbar = tqdm(total=self.epochs, leave=False, desc='eval', dynamic_ncols=True, bar_format='{l_bar}')
+        for epoch in range(self.epochs):
+            if self.if_lr_decay == True:
+                self.lr = self.lr_decay(epoch)
             for index in range(data_num):
                 # positive sampling
                 v0 = train_data[start[index]: end[index]]
@@ -269,80 +300,59 @@ class RBM:
                 vk = v0.copy()
                 if self.sampling_type == "gibbs_sampling" and self.opt_type == "cdk":
                     _, vk, _, p_hk_v = self.gibbs_sampling(v0)
-                    self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                    dw, dvb, dhb = self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
                 elif self.sampling_type == "gibbs_sampling" and self.opt_type == "pcd":
                     _, vk, _, p_hk_v = self.gibbs_sampling(persistent_chain)
-                    self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                    dw, dvb, dhb = self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
                 elif self.sampling_type == "gibbs_sampling" and self.opt_type == "wcd":
                     _, vk, _, p_hk_v = self.gibbs_sampling(v0)
-                    self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                    dw, dvb, dhb = self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
                 elif self.sampling_type == "gibbs_sampling" and self.opt_type == "wpcd":
                     _, vk, _, p_hk_v = self.gibbs_sampling(persistent_chain)
-                    self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                    dw, dvb, dhb = self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
                 elif self.sampling_type == "parallel_tempering" and self.opt_type == "cdk":
-                    _, vk, p_hk_v =  self.parallel_tempering(v0)
-                    self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                    _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
+                    dw, dvb, dhb = self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
-                elif self.sampling_type == "parallel_tempering" and self.opt_type == "pcd":
-                    exit("choose cdk / wcd !")
+                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "pcd":
+                #     _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
+                #     self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
-                elif self.sampling_type == "parallel_tempering" and self.opt_type == "wcd":
-                    _, vk, p_hk_v =  self.parallel_tempering(v0)
-                    self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
+                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "wcd":
+                #     _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
+                #     self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
                     
-                elif self.sampling_type == "parallel_tempering" and self.opt_type == "wpcd":
-                    exit("choose cdk / wcd !")
+                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "wpcd":
+                #     _, vk, p_hk_v = self.parallel_tempering_opt(persistent_chain)
+                #     self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
                 else:
                     exit("sampling_type = gibbs sampling / parallel tempering !" + '\n' 
                        + "opt_type = cdk / pcd / wcd / wpcd")
                 
-                if self.opt_type == "pcd" or "pwcd":
+                if self.opt_type == "pcd" or "wpcd":
                     persistent_chain = vk          
 
             if epoch + 1 == self.epochs or (epoch + 1) % self.output_epoch == 0 or epoch == 0:
-                results, KL, logLKH, x, Entropy = self.compute_metrics(epoch)
-                tqdm.write(results)
-                #f.write(results + '\n')
-
+                results, KL, logLKH, x, Entropy = self.compute_metrics(epoch, batch, train_data)
+                #tqdm.write(results)
                 if KL < lowest_KL:
                     lowest_KL = KL
                     highest_NLL = logLKH
                     highest_probsum = x
+                    entropy_per = Entropy
 
-        optimal_record = "KL {} NLL {} prob_sum {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4))
-        #f.write(record + '\n')
-        #f.write('\n')c
-        #tqdm.write(record)
-        tqdm.write(optimal_record)
-        #f.close()
+            KL_records.append(KL)
 
+            pbar.set_description("step: {}  epoch: {}/{}".format(step+1, epoch+1, self.epochs))
+            pbar.update() 
 
+        optimal_record = "KL {} NLL {} prob_sum {} entropy_per {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4), np.round(entropy_per, 4))
+        #tqdm.write(optimal_record)
 
-
-if __name__ == "__main__":
-    train_data = np.loadtxt(r'./data/Bars-and-Stripes-4x4.txt')
-                            # './data/Bars-and-Stripes-3x3.txt' (14, 9) 27
-                            # './data/Bars-and-Stripes-4x4.txt' (30, 16) 48
-                            # './data/Labeled-Shifter-4-11.txt' (48, 11) 33
-                            # './data/Labeled-Shifter-5-13.txt' (96, 13) 39
-
-    rbm = RBM(v_dim = train_data.shape[1],
-                h_dim = train_data.shape[1] * 3,
-                gibbs_num = 1,
-                opt_type = "cdk",
-                sampling_type = "gibbs_sampling", # parallel_tempering gibbs_sampling
-                lr = 1e-3,
-                epochs= 350000, # 300000, lr 3e-3 lr_decay 1e-10
-                batch_size = 14,
-                chain_num = 2,
-                weight_decay = 2.5e-5, # 2.5e-5
-                exp_lrd = 1e-10, # 1e-10
-                output_epoch = 10000
-                )
-
-    rbm.train(train_data)
+        return np.round(lowest_KL, 4)
+        

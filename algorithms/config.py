@@ -1,26 +1,27 @@
 import argparse
 
 def parse_args():
-    # fmt: off
     parser = argparse.ArgumentParser()
+    parser.add_argument("--data-path", type=str, default= "./data/BS3.txt",
+        help="paths: [./data/BS3.txt, ./data/BS4.txt, ./data/LS4.txt, ./data/LS5.txt]")
     parser.add_argument("--opt-type", type=str, default= "cdk",
-        help="the type of optimization")
+        help="choose: [cdk, pcd, wcd, wpcd]")
+    parser.add_argument("--sampling-type", type=str, default= "gibbs_sampling",
+        help="choose: [gibbs_sampling, parallel_tempering]")
     parser.add_argument("--gibbs-num", type=int, default= 1,
         help="the gibbs sampling time")
-    parser.add_argument("--batch-size", type=int, default= 14, nargs="?", const=True,
-        help="the batch size")
+    parser.add_argument("--chain-num", type=int, default= 2,
+        help="the parallel tempering chain number")
     parser.add_argument("--lr", type=float, default= 1e-3,
         help="the learning rate")
-    parser.add_argument("--lr-expdecay", type=float, default= 0, nargs="?", const=True,
-        help="the exponential learning decay rate")
-    parser.add_argument("--weight-decay", type=float, default= 0, nargs="?", const=True,
+    parser.add_argument("--if-lr-decay", type=bool, default=False,
+        help="the linear deacy learning rate")
+    parser.add_argument("--weight-decay", type=float, default= 0,
         help="the weight deacy rate")
-    parser.add_argument("--hidden-unit", type=int, default= 27, nargs="?", const=True,
-        help="the number of hidden units")
-    parser.add_argument("--epochs", type=int, default= 300000, nargs="?", const=True,
+    parser.add_argument("--epochs", type=int, default= 100000, nargs="?", const=True,
         help="the training epochs")
-    parser.add_argument("--run-time", type=int, default= 1, nargs="?", const=True,
-        help="the running time")
+    parser.add_argument("--metric_update_epoch", type=int, default= 10, nargs="?", const=True,
+        help="the training epochs")
 
     args = parser.parse_args()
 
