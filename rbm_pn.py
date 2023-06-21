@@ -4,10 +4,9 @@ from tqdm import tqdm
 class RBM:
     def __init__(self,
                  v_dim, h_dim,
-                 opt_type, sampling_type,
+                 sampling_type,
+                 opt_type,
                  lr=1e-3,
-                 if_lr_decay=True,
-                 weight_decay = 0,
                  gibbs_num = 1,
                  epochs = 100000,
                  batch_size = 14,
@@ -16,15 +15,16 @@ class RBM:
                  ):
         self.v_dim = v_dim
         self.h_dim = h_dim
+        # self.v_bias = np.random.normal(-0.1, 0.1, size = (1,self.v_dim))
+        # self.h_bias = np.random.normal(-0.1, 0.1, size =(1,self.h_dim))
+        # self.W = np.random.normal(size = (self.v_dim, self.h_dim))
 
         self.v_bias = np.zeros((1,self.v_dim))
         self.h_bias = np.zeros((1,self.h_dim))
-        self.W = np.random.normal(0, 1, size = (self.v_dim, self.h_dim))
+        self.W = np.random.normal(0, 0.01, size = (self.v_dim, self.h_dim))
 
         self.lr = lr
         self.init_lr = lr
-        self.if_lr_decay = if_lr_decay
-        self.weight_decay = weight_decay
 
         self.opt_type = opt_type
         self.v_w, self.v_v, self.v_h = 0, 0, 0
@@ -36,11 +36,14 @@ class RBM:
         self.gibbs_num = gibbs_num
         if self.sampling_type == "parallel_tempering":
             self.chain_num = chain_num
-            self.chains = np.float32(np.random.binomial(1, 0.5, (self.chain_num, self.v_dim)))
-            self.chains_opt = np.float32(np.random.binomial(1, 0.5, (self.batch_size, self.chain_num, self.v_dim)))
+            # self.chains = 2 * np.float32(np.random.binomial(1, 0.5, (self.chain_num, self.v_dim))) - 1
+            self.chains_opt = 2 * np.float16(np.random.binomial(1, 0.5, (self.batch_size, self.chain_num, self.v_dim))) - 1
             self.beta = np.linspace(0.0, 1.0, self.chain_num).reshape(self.chain_num, 1)
             self.swap_time = max(int(np.sqrt(self.chain_num)), 2)
-        
+
+        self.output_epoch = output_epoch
+        self.allcases = self.get_all_cases(self.v_dim)
+
         if (self.opt_type == "cdk" or self.opt_type == "wcd") and self.sampling_type == "gibbs_sampling":
             self.if_lr_decay = False
             self.weight_decay = 0
@@ -51,24 +54,26 @@ class RBM:
             self.if_lr_decay = True
             self.weight_decay = 2.5e-5
 
-        self.output_epoch = output_epoch
-        self.allcases = self.get_all_cases(self.v_dim)
         
 
     def sample_h(self, v_input):
-        p_h_v = 1 / (1 + np.exp(-(np.dot(v_input, self.W) + self.h_bias)))
+        v_input = np.float16(v_input)
+        var = -(np.dot(v_input, self.W) + self.h_bias)
+        p_h_v =  1 / (1 + np.exp(2*var))
         state_h = self.state_sample(p_h_v)
         return state_h, p_h_v
-
-    def sample_v(self, h, beta=1):
-        p_v_h = 1 / (1 + np.exp(-(np.dot(h, self.W.T) + self.v_bias)))
+    
+    def sample_v(self, h):
+        h = np.float16(h)
+        var = -(np.dot(h, self.W.T) + self.v_bias)
+        p_v_h = 1 / (1 + np.exp(2*var))
         state_v = self.state_sample(p_v_h)
         return state_v, p_v_h
 
     def state_sample(self, p):
         uni = np.random.uniform(0,1, size = (p.shape))
         condition = np.less(p, uni)
-        state_node = np.where(condition, 0, 1)
+        state_node = np.where(condition, -1, 1)
         return state_node
 
     def gibbs_sampling(self, v):
@@ -88,22 +93,26 @@ class RBM:
 
     def parallel_tempering_opt(self, v):
         x = (np.einsum("bcv,vh->bch", self.chains_opt, self.W) + self.h_bias) * self.beta
-        p_h_v = np.power(np.exp(-x) + 1, -1)
+        p_h_v = np.power(np.exp(-2 * x) + 1, -1)
         hid = self.state_sample(p_h_v)
+
         for _ in range(self.gibbs_num):
             x = (np.einsum("bch,vh->bcv", hid, self.W) + self.v_bias) * self.beta
-            p_v_h = np.power(np.exp(-x) + 1, -1)
+            p_v_h = np.power(np.exp(-2 * x) + 1, -1)
             vis = self.state_sample(p_v_h)
 
             x = (np.einsum("bcv,vh->bch", vis, self.W) + self.h_bias) * self.beta
-            p_h_v = np.power(np.exp(-x) + 1, -1)
+            p_h_v = np.power(np.exp(-2 * x) + 1, -1)
             hid = self.state_sample(p_h_v)
-        self.chains_opt = np.power(np.exp(-(np.einsum("bch,vh->bcv", hid, self.W) + self.v_bias) * self.beta) + 1, -1)
+
+        x = (np.einsum("bch,vh->bcv", hid, self.W) + self.v_bias) * self.beta
+        self.chains_opt = np.power(np.exp(-2 * x) + 1, -1)
         self.swap_state_opt(self.chains_opt, hid)
 
         samples = self.chains_opt[:,-1,:]
         v_k = self.state_sample(samples)
-        p_hk_v = np.power(np.exp(-(np.dot(v_k, self.W) + self.h_bias)) + 1, -1)
+        p_hk_v = np.power(np.exp((-2) * (np.dot(v_k, self.W) + self.h_bias)) + 1, -1)
+
         return samples, v_k, p_hk_v
 
     def swap_state_opt(self, chain, hid):
@@ -231,19 +240,19 @@ class RBM:
                 path.append(nums[i])
                 backtracking(nums, v_dim, path, i + 1, res)
                 path.pop()
-        return np.array(all_cases([0, 1], self.v_dim))
+        return np.array(all_cases([-1, 1], self.v_dim))
 
     def compute_px_with_Z(self, train_data, W, v_bias, h_bias):
-        train_data = np.float32(train_data)
+        train_data = np.float16(train_data)
         first_part = np.dot(train_data, v_bias.T).reshape(train_data.shape[0], 1)
-        second_part = np.sum(np.log(1 + np.exp(np.dot(train_data, W) + h_bias)), axis = 1)
+        second_part = np.sum(np.log(np.exp(-np.dot(train_data, W) - h_bias) + np.exp(np.dot(train_data, W) + h_bias)), axis = 1)
         second_part = second_part.reshape(train_data.shape[0], 1)
         pxz = np.exp(first_part + second_part)
         return pxz.reshape(-1)
 
     def compute_Z(self, W, v_bias, h_bias):
         first_part = np.dot(self.allcases, v_bias.T).reshape(len(self.allcases), 1)
-        second_part = np.sum(np.log(1 + np.exp(np.dot(self.allcases, W) + h_bias)), axis = 1)
+        second_part = np.sum(np.log(np.exp(-np.dot(self.allcases, W) - h_bias) + np.exp(np.dot(self.allcases, W) + h_bias)), axis = 1)
         second_part = second_part.reshape(len(self.allcases), 1)
         Z = np.sum(np.exp(first_part + second_part).reshape(-1))
         return Z
@@ -280,14 +289,11 @@ class RBM:
         Entropy = (-np.sum(probability_list * np.log(probability_list))) / np.log(batch)
         results = 'epoch {}: KL = {:.5f}, logLKH = {:.4f}, prob_sum = {:.4f}, entropy_per = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, Entropy, self.lr)
 
-        return results, KL, logLKH, x, Entropy, probability_list
+        return results, KL, logLKH, x, Entropy
 
-    def train(self, train_data, step):
+    def train(self, train_data, step=0):
         start, end, data_num = self.batch_index(train_data)
         batch = train_data.shape[0]
-
-        KL_records, loglkhs, Prob_sums, Entropys = [], [], [], []
-
 
         if self.opt_type == "pcd" or "wpcd":
             persistent_chain = None
@@ -302,7 +308,7 @@ class RBM:
                 _, p_h0_v = self.sample_h(v0)
 
                 if (self.opt_type == "pcd" or "wpcd") and persistent_chain is None:
-                        persistent_chain = np.random.binomial(1, 0.5, size=(self.batch_size, self.v_dim))
+                        persistent_chain = 2 * np.random.binomial(1, 0.5, size=(self.batch_size, self.v_dim)) - 1
                 
                 # negative sampling
                 vk = v0.copy()
@@ -326,18 +332,6 @@ class RBM:
                     _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
                     dw, dvb, dhb = self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
 
-                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "pcd":
-                #     _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
-                #     self.gradient_compute(v0, vk, p_h0_v, p_hk_v)
-
-                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "wcd":
-                #     _, vk, p_hk_v =  self.parallel_tempering_opt(v0)
-                #     self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
-                    
-                # elif self.sampling_type == "parallel_tempering" and self.opt_type == "wpcd":
-                #     _, vk, p_hk_v = self.parallel_tempering_opt(persistent_chain)
-                #     self.weighted_gradient_compute(v0, vk, p_h0_v, p_hk_v)
-
                 else:
                     exit("sampling_type = gibbs sampling / parallel tempering !" + '\n' 
                        + "opt_type = cdk / pcd / wcd / wpcd")
@@ -346,50 +340,26 @@ class RBM:
                     persistent_chain = vk          
 
             if epoch + 1 == self.epochs or (epoch + 1) % self.output_epoch == 0 or epoch == 0:
-                results, KL, logLKH, x, Entropy, prob_dist = self.compute_metrics(epoch, batch, train_data)
+                results, KL, logLKH, x, Entropy = self.compute_metrics(epoch, batch, train_data)
                 tqdm.write(results)
-
-            KL_records.append(KL)
-            Prob_sums.append(x)
-            Entropys.append(Entropy)
-            loglkhs.append(logLKH)
 
             pbar.set_description("step: {}  epoch: {}/{}".format(step+1, epoch+1, self.epochs))
             pbar.update() 
 
-        KL_records = np.array(KL_records).reshape(self.epochs)
-        Prob_sums = np.array(Prob_sums).reshape(self.epochs)
-        Entropys = np.array(Entropys).reshape(self.epochs)
-        loglkhs = np.array(loglkhs).reshape(self.epochs)
-        print(list(prob_dist))
-
-        return KL_records, loglkhs, Prob_sums, Entropys
-
 
 if __name__ == "__main__":
     train_data = np.loadtxt(r'./algorithms/data/BS4.txt')
-    print(train_data.shape)
-    KL_last, loglkh_last, prob_last, entropy_last  = [], [], [], []
-    rep = 5
-    for step in range(rep):
-        rbm = RBM(v_dim = train_data.shape[1],
+    train_data = 2 * train_data - 1
+
+    rbm = RBM(v_dim = train_data.shape[1],
                             h_dim = train_data.shape[1] * 3,
                             batch_size = train_data.shape[0],
                             lr = 0.005,
                             opt_type = "cdk",
                             sampling_type = "gibbs_sampling",
                             epochs= 100000,
-                            gibbs_num = 10,
+                            gibbs_num = 1,
                             output_epoch = 1000,
                             chain_num = 2,)
-    
-        KL_reord, loglkhs, probsum, entropys = rbm.train(train_data, step)
-        KL_last.append(KL_reord[-1])
-        loglkh_last.append(loglkhs[-1])
-        prob_last.append(probsum[-1])
-        entropy_last.append(entropys[-1])
-    KL_last = np.array(KL_last).reshape(rep)
-    prob_last = np.array(prob_last).reshape(rep)
-    entropy_last = np.array(entropy_last).reshape(rep)
-    loglkh_last = np.array(loglkh_last).reshape(rep) / train_data.shape[0]
-    print("&{a}({b}) &{c}({d}) &{e}({f}) &{g}({h})".format(a=np.mean(KL_last).round(4), b=np.std(KL_last).round(4), c=np.mean(loglkh_last).round(4), d=np.std(loglkh_last).round(4), e=np.mean(prob_last).round(4), f=np.std(prob_last).round(4), g=np.mean(entropy_last).round(4), h=np.std(entropy_last).round(4)))
+
+    KL_record = rbm.train(train_data)

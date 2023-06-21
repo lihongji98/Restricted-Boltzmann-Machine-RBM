@@ -140,7 +140,7 @@ class RBM:
         Entropy = -np.sum(scaled_probability_list * np.log(scaled_probability_list))/np.log(batch)
         results = 'epoch {}: KL = {:.5f}, logLKH = {:.4f}, prob_sum = {:.4f}, entropy_per = {:.4f}, lr = {:.7f}'.format(epoch + 1, KL, logLKH, x, Entropy, self.lr)
         # print(probability_list)
-        return results, KL, logLKH, x, Entropy
+        return results, KL, logLKH, x, Entropy, probability_list
 
     
     def train(self, train_data):
@@ -174,7 +174,7 @@ class RBM:
                 self.gradient_compute(v0, p_h0_v, Z)
 
             if epoch + 1 == self.epochs or (epoch + 1) % self.output_epoch == 0 or epoch == 0:
-                results, KL, logLKH, x, Entropy = self.compute_metrics(epoch, batch, train_data)
+                results, KL, logLKH, x, Entropy, prob_dist = self.compute_metrics(epoch, batch, train_data)
                 #tqdm.write(results)
                 KL_records.append(KL)
 
@@ -182,7 +182,7 @@ class RBM:
                     lowest_KL = KL
                     highest_NLL = logLKH
                     highest_probsum = x
-
+        print(prob_dist)
         record = "KL {} NLL {} prob_sum {}".format(np.round(lowest_KL, 4), np.round(highest_NLL, 4), np.round(highest_probsum, 4))
         #f.write(record + '\n')
         #f.write('\n')
@@ -246,14 +246,14 @@ class RBM:
 
 
 if __name__ == "__main__":
-    train_data = np.loadtxt(r'./data/BS3.txt')
+    train_data = np.loadtxt(r'/Users/lihongji/Documents/GitHub/Restricted-Boltzmann-Machine-RBM/algorithms/data/BS3.txt')
                             # './data/BS3.txt' (14, 9) 27
                             # './data/BS4.txt' (30, 16) 48
                             # './data/LS4.txt' (48, 11) 33
                             # './data/LS5.txt' (96, 13) 39
     exact_KL_records = []
-    repetition = 30
-    epoch = 200
+    repetition = 1
+    epoch = 100000
     lr = 0.03
     if_lr_decay = False
     for _ in range(repetition):
@@ -278,5 +278,5 @@ if __name__ == "__main__":
         exact_KL_records.append(KL_records)
     exact_KL_records = np.array(exact_KL_records).reshape(repetition, epoch)
     exact_KL_records = np.mean(exact_KL_records, axis=0)
-    print(exact_KL_records.shape)
-    np.save("./KL/BS3/wpcd_exact_1e3_one.npy", KL_records)
+    # print(exact_KL_records.shape)
+    # np.save("./KL/BS3/wpcd_exact_1e3_one.npy", KL_records)

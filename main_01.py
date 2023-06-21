@@ -18,23 +18,22 @@ if __name__ == "__main__":
     elif train_data.shape[1] == 13:
         initial_path = "LS5/"
 
-    for step in range(30):
-        rbm = RBM(v_dim = train_data.shape[1],
-                    h_dim = train_data.shape[1] * 3,
-                    gibbs_num = args.gibbs_num,
-                    opt_type = args.opt_type,
-                    sampling_type = args.sampling_type, 
-                    lr = args.lr,
-                    if_lr_decay = args.if_lr_decay, 
-                    epochs= args.epochs, 
-                    batch_size = train_data.shape[0],
-                    chain_num = args.chain_num,
-                    weight_decay = args.weight_decay, 
-                    output_epoch = args.metric_update_epoch
-                    )
+    rbm = RBM(v_dim = train_data.shape[1],
+                h_dim = train_data.shape[1] * 3,
+                gibbs_num = args.gibbs_num,
+                opt_type = args.opt_type,
+                sampling_type = args.sampling_type, 
+                lr = args.lr,
+                if_lr_decay = args.if_lr_decay, 
+                epochs= args.epochs, 
+                batch_size = train_data.shape[0],
+                chain_num = args.chain_num,
+                weight_decay = args.weight_decay, 
+                output_epoch = args.metric_update_epoch
+                )
         
         # rbm.W = np.load('initial/'+initial_path+'W.npy')
         # rbm.v_bias = np.load('initial/'+initial_path+'v_bias.npy')
         # rbm.h_bias = np.load('initial/'+initial_path+'h_bias.npy')
 
-        rbm.train(train_data, step)
+    rbm.train(train_data)

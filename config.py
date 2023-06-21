@@ -2,8 +2,8 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-path", type=str, default= "./data/BS3.txt",
-        help="paths: [./data/BS3.txt, ./data/BS4.txt, ./data/LS4.txt, ./data/LS5.txt]")
+    parser.add_argument("--data-path", type=str, default= "./algorithms/data/BS3.txt",
+        help="paths: [./algorithms/data/BS3.txt, ./algorithms/data/BS4.txt, ./algorithms/data/LS4.txt, ./algorithms/data/LS5.txt]")
     parser.add_argument("--opt-type", type=str, default= "cdk",
         help="choose: [cdk, pcd, wcd, wpcd]")
     parser.add_argument("--sampling-type", type=str, default= "gibbs_sampling",
