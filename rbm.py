@@ -367,19 +367,19 @@ class RBM:
 
 
 if __name__ == "__main__":
-    train_data = np.loadtxt(r'./algorithms/data/BS4.txt')
+    train_data = np.loadtxt(r'./algorithms/data/BS3.txt')
     print(train_data.shape)
     KL_last, loglkh_last, prob_last, entropy_last  = [], [], [], []
-    rep = 5
+    rep = 1
     for step in range(rep):
         rbm = RBM(v_dim = train_data.shape[1],
-                            h_dim = train_data.shape[1] * 3,
+                            h_dim = train_data.shape[1] * 5,
                             batch_size = train_data.shape[0],
-                            lr = 0.005,
-                            opt_type = "cdk",
+                            lr = 0.1,
+                            opt_type = "wcd",
                             sampling_type = "gibbs_sampling",
-                            epochs= 100000,
-                            gibbs_num = 10,
+                            epochs= 1000000,
+                            gibbs_num = 1,
                             output_epoch = 1000,
                             chain_num = 2,)
     
